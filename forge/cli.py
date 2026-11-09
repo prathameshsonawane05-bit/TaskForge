@@ -1,8 +1,9 @@
-"""CLI for license checks, the funnel, patch splits, and the sandbox.
+"""CLI for license checks, the funnel, patch splits, the sandbox, and outcomes.
 
-Exit status: 0 accepted or a funnel was printed, 1 a repository was refused,
-2 the command could not be completed. Refusals and funnel counts go to stdout.
-Failures go to stderr.
+Exit status: 0 accepted, a funnel was printed, or a trial was classified.
+1 a repository was refused. A finished sandbox uses the container status.
+2 the command could not be completed, including a sandbox timeout.
+Refusals and funnel counts go to stdout. Failures go to stderr.
 """
 
 from pathlib import Path
@@ -15,6 +16,7 @@ from forge.config import find_repo_root, secret_for_redaction
 from forge.errors import ForgeError, redact
 from forge.funnel import format_report, run_funnel
 from forge.models import ReasonCode
+from forge.outcomes import format_trial, run_widget_trial
 from forge.sandbox import DEFAULT_TIMEOUT_SECONDS, format_success, run_sandbox
 from forge.split import format_split, run_split
 
@@ -23,7 +25,7 @@ app = typer.Typer(add_completion=False, no_args_is_help=True)
 
 @app.callback()
 def main() -> None:
-    """Check licenses, filter pull requests, split patches, and run a sandbox."""
+    """Check licenses, filter pulls, split patches, and run a sandbox."""
 
 
 @app.command("check")
@@ -172,6 +174,29 @@ def sandbox_command(
         typer.echo(redact(line, secret))
         raise typer.Exit(code=1)
     typer.echo(redact(format_success(outcome.success), secret))
+    stderr = redact(outcome.success.stderr, secret)
+    if stderr:
+        typer.echo(stderr, err=True, nl=not stderr.endswith("\n"))
+    if outcome.success.exit_code != 0:
+        raise typer.Exit(code=outcome.success.exit_code)
+
+
+@app.command("outcomes")
+def outcomes_command(
+    timeout: Annotated[
+        int,
+        typer.Option("--timeout", help="Seconds before the run is killed. Default is 60."),
+    ] = DEFAULT_TIMEOUT_SECONDS,
+) -> None:
+    """Classify one local fixture. A single run is not a validation gate."""
+    root = find_repo_root()
+    try:
+        report = run_widget_trial(root=root, timeout=timeout)
+    except Exception as exc:
+        _emit_failure(root, exc)
+        raise typer.Exit(code=2) from None
+    secret = secret_for_redaction(root / ".env")
+    typer.echo(redact(format_trial(report), secret))
 
 
 def _emit_failure(root: Path, exc: Exception) -> None:

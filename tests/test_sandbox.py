@@ -14,6 +14,8 @@ from forge.sandbox import (
     DEFAULT_TIMEOUT_SECONDS,
     CommandResult,
     CommandTimeout,
+    SandboxRun,
+    SandboxSuccess,
     image_tag,
     run_sandbox,
 )
@@ -303,3 +305,64 @@ def test_cli_refuses_an_unlisted_repo_without_docker(
     assert result.exit_code == 1
     assert "refused torvalds/linux reason=not_on_allowlist" in result.stdout
     assert TOKEN not in text
+
+
+def test_cli_process_status_is_the_container_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write_project(tmp_path, f"GITHUB_TOKEN={TOKEN}\n", ["acme/widgets"])
+    monkeypatch.chdir(tmp_path)
+    seen: dict[str, int] = {}
+
+    def fake_run(*_args: object, **_kwargs: object) -> SandboxRun:
+        code = seen["code"]
+        return SandboxRun(
+            success=SandboxSuccess(
+                full_name="acme/widgets",
+                sha=SHA,
+                image=image_tag("acme", "widgets", SHA),
+                name="taskforge-demo",
+                exit_code=code,
+                stdout="stdout-line\n",
+                stderr="stderr-line\n",
+            )
+        )
+
+    monkeypatch.setattr("forge.cli.run_sandbox", fake_run)
+    for code in (1, 2, 0):
+        seen["code"] = code
+        result = runner.invoke(
+            app,
+            ["sandbox", "acme/widgets", SHA, "--patch", "change.patch", "true"],
+        )
+        assert result.exit_code == code
+        assert "stdout-line" in result.stdout
+        assert f"exit {code}" in result.stdout
+        assert "stderr-line" in result.stderr
+        assert "sandbox_timeout" not in f"{result.stdout}{result.stderr}"
+        assert TOKEN not in f"{result.stdout}{result.stderr}"
+
+
+def test_cli_timeout_stays_process_exit_2(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write_project(tmp_path, f"GITHUB_TOKEN={TOKEN}\n", ["acme/widgets"])
+    monkeypatch.chdir(tmp_path)
+
+    def fake_run(*_args: object, **_kwargs: object) -> SandboxRun:
+        raise ForgeError(
+            "Sandbox run timed out after 3 seconds. Removed container taskforge-demo.",
+            reason=ReasonCode.SANDBOX_TIMEOUT,
+        )
+
+    monkeypatch.setattr("forge.cli.run_sandbox", fake_run)
+    result = runner.invoke(
+        app,
+        ["sandbox", "acme/widgets", SHA, "--patch", "change.patch", "sleep", "30"],
+    )
+    assert result.exit_code == 2
+    assert "reason=sandbox_timeout" in result.stderr
+    assert "exit 2" not in result.stdout
+    assert TOKEN not in f"{result.stdout}{result.stderr}"

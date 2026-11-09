@@ -3,8 +3,9 @@
 The allowlist and the license are checked before any clone or docker build.
 The clone lives under data/ and is never executed on the host. The image tag
 contains the owner, the name, and the full commit SHA. A run has no network,
-a memory limit, a CPU limit, and a timeout. The only host mount is the patch,
-and it is read-only. The container filesystem stays writable.
+a memory limit, a CPU limit, and a timeout. The only host mount is one patch
+file at /patch, or one directory of patches at /patches, and it is read-only.
+The container filesystem stays writable.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ DEFAULT_MEMORY = "512m"
 DEFAULT_CPUS = "1"
 BASE_IMAGE = "python:3.11-slim"
 PATCH_TARGET = "/patch"
+PATCHES_TARGET = "/patches"
 _SHA = re.compile(r"^[0-9a-f]{40}$")
 _SECRET_KEYS = frozenset({"GITHUB_TOKEN", "GH_TOKEN", "GITHUB_PAT"})
 
@@ -91,6 +93,19 @@ def dockerfile_text() -> str:
     return f"FROM {BASE_IMAGE}\nWORKDIR /repo\nCOPY . /repo\n"
 
 
+def eval_dockerfile_text() -> str:
+    """Install git and pytest at build time. The run itself stays offline."""
+    return (
+        f"FROM {BASE_IMAGE}\n"
+        "RUN apt-get update \\\n"
+        " && apt-get install -y --no-install-recommends git \\\n"
+        " && rm -rf /var/lib/apt/lists/* \\\n"
+        " && pip install --no-cache-dir pytest\n"
+        "WORKDIR /repo\n"
+        "COPY . /repo\n"
+    )
+
+
 def container_run_args(
     *,
     image: str,
@@ -101,7 +116,8 @@ def container_run_args(
     cpus: str = DEFAULT_CPUS,
 ) -> list[str]:
     """Arguments for docker run. The container filesystem is not read-only."""
-    mount = f"type=bind,source={patch},target={PATCH_TARGET},readonly"
+    target = PATCHES_TARGET if patch.is_dir() else PATCH_TARGET
+    mount = f"type=bind,source={patch},target={target},readonly"
     return [
         "docker",
         "run",
@@ -179,36 +195,7 @@ def run_sandbox(
         return opened
     env = _prepared_env(root, base_env)
     run = executor if executor is not None else default_executor
-    try:
-        try:
-            waited = run(["docker", "wait", opened.name], env, timeout)
-        except CommandTimeout:
-            _remove_container(run, opened.name, env, ignore_error=False)
-            raise ForgeError(
-                f"Sandbox run timed out after {timeout:g} seconds. "
-                f"Removed container {opened.name}.",
-                reason=ReasonCode.SANDBOX_TIMEOUT,
-            ) from None
-        if waited.returncode != 0:
-            raise ForgeError(
-                "docker wait failed.",
-                reason=ReasonCode.SANDBOX_ERROR,
-            )
-        logs = run(["docker", "logs", opened.name], env, 60)
-        exit_code = _exit_code(waited.stdout)
-        return SandboxRun(
-            success=SandboxSuccess(
-                full_name=opened.full_name,
-                sha=opened.sha,
-                image=opened.image,
-                name=opened.name,
-                exit_code=exit_code,
-                stdout=logs.stdout,
-                stderr=logs.stderr,
-            )
-        )
-    finally:
-        _remove_container(run, opened.name, env, ignore_error=True)
+    return _finish(opened, timeout, run, env)
 
 
 def open_sandbox(
@@ -266,6 +253,99 @@ def open_sandbox(
         image=tag,
         name=container,
     )
+
+
+def build_eval_image(
+    owner: str,
+    name: str,
+    sha: str,
+    checkout: Path,
+    *,
+    root: Path,
+    executor: Executor | None = None,
+    base_env: Mapping[str, str] | None = None,
+    host_platform: str | None = None,
+) -> str:
+    """Build an image that contains git and pytest. The build may use the network."""
+    digest = _require_sha(sha)
+    env = _prepared_env(root, base_env)
+    run = executor if executor is not None else default_executor
+    secret = secret_for_redaction(root / ".env")
+    _reject_secret([], env, secret)
+    platform_name = host_platform if host_platform is not None else docker_platform()
+    _require_base_image(platform_name, run, env)
+    tag = image_tag(owner, name, digest)
+    _build_image(
+        tag,
+        checkout,
+        root,
+        run,
+        env,
+        text=eval_dockerfile_text(),
+        filename="eval.Dockerfile",
+    )
+    return tag
+
+
+def run_mounted(
+    *,
+    full_name: str,
+    sha: str,
+    image: str,
+    command: list[str],
+    mount: Path,
+    checkout: Path,
+    root: Path,
+    timeout: float = DEFAULT_TIMEOUT_SECONDS,
+    executor: Executor | None = None,
+    base_env: Mapping[str, str] | None = None,
+) -> SandboxSuccess:
+    """Run one command. The only host mount is ``mount``, and it is read-only."""
+    if timeout < 1:
+        raise ForgeError(
+            "timeout must be at least 1 second.",
+            reason=ReasonCode.CONFIG_ERROR,
+        )
+    if not command:
+        raise ForgeError(
+            "A sandbox command is required.",
+            reason=ReasonCode.CONFIG_ERROR,
+        )
+    digest = _require_sha(sha)
+    mount_path = _validate_mount(mount, root, checkout)
+    env = _prepared_env(root, base_env)
+    run = executor if executor is not None else default_executor
+    secret = secret_for_redaction(root / ".env")
+    _reject_secret(command, env, secret)
+    container = _container_name(digest)
+    args = container_run_args(
+        image=image,
+        name=container,
+        command=command,
+        patch=mount_path,
+    )
+    _reject_secret(args, env, secret)
+    started = run(args, env, 120)
+    if started.returncode != 0:
+        _remove_container(run, container, env, ignore_error=True)
+        detail = _one_line(started.stderr or started.stdout)
+        raise ForgeError(
+            f"docker run failed.{detail}",
+            reason=ReasonCode.SANDBOX_ERROR,
+        )
+    opened = OpenedSandbox(
+        full_name=full_name,
+        sha=digest,
+        image=image,
+        name=container,
+    )
+    outcome = _finish(opened, timeout, run, env)
+    if outcome.success is None:
+        raise ForgeError(
+            "Sandbox finished without a result.",
+            reason=ReasonCode.INTERNAL,
+        )
+    return outcome.success
 
 
 def close_sandbox(
@@ -366,6 +446,45 @@ def _validate_patch(patch: Path, root: Path, checkout: Path) -> Path:
     return resolved
 
 
+def _validate_mount(path: Path, root: Path, checkout: Path) -> Path:
+    if not path.exists() or path.is_symlink():
+        raise ForgeError(
+            "Mount path must be an existing file or directory.",
+            reason=ReasonCode.CONFIG_ERROR,
+        )
+    if not path.is_file() and not path.is_dir():
+        raise ForgeError(
+            "Mount path must be an existing file or directory.",
+            reason=ReasonCode.CONFIG_ERROR,
+        )
+    resolved = path.resolve()
+    env_file = (root / ".env").resolve()
+    checkout_resolved = checkout.resolve()
+    if resolved == env_file or resolved.name == ".env":
+        raise ForgeError(
+            "Refusing to mount .env into the sandbox.",
+            reason=ReasonCode.CONFIG_ERROR,
+        )
+    if "docker.sock" in resolved.name or "docker.sock" in str(resolved):
+        raise ForgeError(
+            "Refusing to mount the docker socket.",
+            reason=ReasonCode.CONFIG_ERROR,
+        )
+    inside_checkout = resolved == checkout_resolved or checkout_resolved in resolved.parents
+    covers_checkout = resolved in checkout_resolved.parents
+    if inside_checkout or covers_checkout:
+        raise ForgeError(
+            "Refusing to mount the host checkout.",
+            reason=ReasonCode.CONFIG_ERROR,
+        )
+    if "," in str(resolved):
+        raise ForgeError(
+            "Mount path must not contain a comma.",
+            reason=ReasonCode.CONFIG_ERROR,
+        )
+    return resolved
+
+
 def _checkout(
     owner: str,
     name: str,
@@ -441,16 +560,58 @@ def _require_base_image(host_platform: str, run: Executor, env: Mapping[str, str
         )
 
 
+def _finish(
+    opened: OpenedSandbox,
+    timeout: float,
+    run: Executor,
+    env: Mapping[str, str],
+) -> SandboxRun:
+    try:
+        try:
+            waited = run(["docker", "wait", opened.name], env, timeout)
+        except CommandTimeout:
+            _remove_container(run, opened.name, env, ignore_error=False)
+            raise ForgeError(
+                f"Sandbox run timed out after {timeout:g} seconds. "
+                f"Removed container {opened.name}.",
+                reason=ReasonCode.SANDBOX_TIMEOUT,
+            ) from None
+        if waited.returncode != 0:
+            raise ForgeError(
+                "docker wait failed.",
+                reason=ReasonCode.SANDBOX_ERROR,
+            )
+        logs = run(["docker", "logs", opened.name], env, 60)
+        exit_code = _exit_code(waited.stdout)
+        return SandboxRun(
+            success=SandboxSuccess(
+                full_name=opened.full_name,
+                sha=opened.sha,
+                image=opened.image,
+                name=opened.name,
+                exit_code=exit_code,
+                stdout=logs.stdout,
+                stderr=logs.stderr,
+            )
+        )
+    finally:
+        _remove_container(run, opened.name, env, ignore_error=True)
+
+
 def _build_image(
     tag: str,
     checkout: Path,
     root: Path,
     run: Executor,
     env: Mapping[str, str],
+    *,
+    text: str | None = None,
+    filename: str = "Dockerfile",
 ) -> None:
-    dockerfile = root / "data" / "sandbox" / "Dockerfile"
+    dockerfile = root / "data" / "sandbox" / filename
     dockerfile.parent.mkdir(parents=True, exist_ok=True)
-    dockerfile.write_text(dockerfile_text(), encoding="utf-8")
+    body = dockerfile_text() if text is None else text
+    dockerfile.write_text(body, encoding="utf-8")
     built = run(
         [
             "docker",
