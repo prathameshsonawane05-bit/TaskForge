@@ -1,7 +1,8 @@
-"""CLI for one-repository allowlist and license checks.
+"""CLI for license checks and the closed-pull funnel.
 
-Exit status: 0 accepted, 1 refused, 2 the check could not be completed.
-Refusals are printed to stdout. Failures are printed to stderr.
+Exit status: 0 accepted or a funnel was printed, 1 a repository was refused,
+2 the command could not be completed. Refusals and funnel counts go to stdout.
+Failures go to stderr.
 """
 
 from pathlib import Path
@@ -12,6 +13,7 @@ import typer
 from forge.check import check_repository
 from forge.config import find_repo_root, secret_for_redaction
 from forge.errors import ForgeError, redact
+from forge.funnel import format_report, run_funnel
 from forge.models import ReasonCode
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
@@ -19,7 +21,7 @@ app = typer.Typer(add_completion=False, no_args_is_help=True)
 
 @app.callback()
 def main() -> None:
-    """Check allowlisted public repositories and confirm SPDX licenses."""
+    """Check licenses and count why closed pull requests are kept or refused."""
 
 
 @app.command("check")
@@ -53,6 +55,40 @@ def check_command(
         line = f"refused {result.full_name} reason={reason} spdx={result.spdx_id}"
     typer.echo(redact(line, secret))
     raise typer.Exit(code=1)
+
+
+@app.command("funnel")
+def funnel_command(
+    repo: Annotated[str, typer.Argument(help="Repository as owner/name.")],
+    limit: Annotated[
+        int,
+        typer.Option("--limit", help="How many closed PRs to read. This does not cap accepts."),
+    ],
+) -> None:
+    """Read closed pull requests and print one rejection count per reason."""
+    root = find_repo_root()
+    try:
+        outcome = run_funnel(repo, root=root, limit=limit)
+    except Exception as exc:
+        _emit_failure(root, exc)
+        raise typer.Exit(code=2) from None
+    secret = secret_for_redaction(root / ".env")
+    if outcome.report is None:
+        refusal = outcome.refusal
+        if refusal is None:
+            _emit_failure(
+                root,
+                ForgeError("Funnel finished without a report.", reason=ReasonCode.INTERNAL),
+            )
+            raise typer.Exit(code=2) from None
+        reason = refusal.reason if refusal.reason is not None else ReasonCode.INTERNAL
+        if refusal.spdx_id is None:
+            line = f"refused {refusal.full_name} reason={reason}"
+        else:
+            line = f"refused {refusal.full_name} reason={reason} spdx={refusal.spdx_id}"
+        typer.echo(redact(line, secret))
+        raise typer.Exit(code=1)
+    typer.echo(redact(format_report(outcome.report), secret))
 
 
 def _emit_failure(root: Path, exc: Exception) -> None:

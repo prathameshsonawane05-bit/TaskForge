@@ -49,7 +49,34 @@ def test_missing_etag_does_not_send_if_none_match(tmp_path: Path) -> None:
     assert "if-none-match" not in calls[1].headers
 
 
-def test_429_retry_after_backs_off_then_fails(tmp_path: Path) -> None:
+def test_429_retries_then_returns_the_later_success(tmp_path: Path) -> None:
+    calls: list[httpx.Request] = []
+    slept: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        if len(calls) < 3:
+            return httpx.Response(
+                429,
+                text="slow down",
+                headers={"Retry-After": "2", "X-RateLimit-Reset": "1000050"},
+            )
+        return httpx.Response(200, text=repository_body("acme/widgets", "MIT"))
+
+    with make_client(
+        TOKEN,
+        tmp_path / "cache.sqlite",
+        handler,
+        sleeper=slept.append,
+        now=lambda: 1_000_000.0,
+    ) as client:
+        payload = client.get_repository("acme", "widgets")
+    assert payload.license is not None and payload.license.spdx_id == "MIT"
+    assert slept == [2.0, 2.0]
+    assert len(calls) == 3
+
+
+def test_429_fails_after_three_retries(tmp_path: Path) -> None:
     calls: list[httpx.Request] = []
     slept: list[float] = []
 
@@ -70,20 +97,23 @@ def test_429_retry_after_backs_off_then_fails(tmp_path: Path) -> None:
     ) as client:
         with pytest.raises(RateLimitError) as caught:
             client.get_repository("acme", "widgets")
-    assert slept == [12.0]
-    assert len(calls) == 1
+    assert slept == [12.0, 12.0, 12.0]
+    assert len(calls) == 4
     message = str(caught.value)
     assert caught.value.reason == "rate_limited"
     assert "HTTP 429" in message
+    assert "3 retries" in message
     assert "Retry-After" in message
     assert "12 seconds" in message
     assert TOKEN not in message
 
 
 def test_403_uses_reset_when_quota_is_exhausted(tmp_path: Path) -> None:
+    calls: list[httpx.Request] = []
     slept: list[float] = []
 
-    def handler(_request: httpx.Request) -> httpx.Response:
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
         return httpx.Response(
             403,
             text="api rate limit exceeded",
@@ -99,24 +129,55 @@ def test_403_uses_reset_when_quota_is_exhausted(tmp_path: Path) -> None:
     ) as client:
         with pytest.raises(RateLimitError) as caught:
             client.get_repository("acme", "widgets")
-    assert slept == [7.0]
+    assert slept == [7.0, 7.0, 7.0]
+    assert len(calls) == 4
+    assert caught.value.reason == "rate_limited"
     assert "X-RateLimit-Reset" in str(caught.value)
     assert TOKEN not in str(caught.value)
 
 
-def test_403_without_rate_headers_uses_default_backoff(tmp_path: Path) -> None:
+def test_bare_403_is_not_a_rate_limit(tmp_path: Path) -> None:
+    calls: list[httpx.Request] = []
     slept: list[float] = []
 
-    def handler(_request: httpx.Request) -> httpx.Response:
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
         return httpx.Response(403, text="forbidden")
 
     with make_client(TOKEN, tmp_path / "cache.sqlite", handler, sleeper=slept.append) as client:
-        with pytest.raises(RateLimitError) as caught:
+        with pytest.raises(GitHubError) as caught:
             client.get_repository("acme", "widgets")
-    assert slept == [1.0]
+    assert slept == []
+    assert len(calls) == 1
+    assert caught.value.reason == "github_error"
+    assert not isinstance(caught.value, RateLimitError)
     message = str(caught.value)
-    assert "No usable Retry-After" in message
+    assert "HTTP 403" in message
+    assert "rate_limited" not in message
     assert TOKEN not in message
+
+
+def test_403_with_remaining_quota_does_not_sleep(tmp_path: Path) -> None:
+    slept: list[float] = []
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            403,
+            text="forbidden",
+            headers={"X-RateLimit-Remaining": "40", "X-RateLimit-Reset": "1000007"},
+        )
+
+    with make_client(
+        TOKEN,
+        tmp_path / "cache.sqlite",
+        handler,
+        sleeper=slept.append,
+        now=lambda: 1_000_000.0,
+    ) as client:
+        with pytest.raises(GitHubError) as caught:
+            client.get_repository("acme", "widgets")
+    assert slept == []
+    assert caught.value.reason == "github_error"
 
 
 def test_retry_after_http_date(tmp_path: Path) -> None:
@@ -136,7 +197,7 @@ def test_retry_after_http_date(tmp_path: Path) -> None:
     ) as client:
         with pytest.raises(RateLimitError):
             client.get_repository("acme", "widgets")
-    assert slept == [pytest.approx(15.0)]
+    assert slept == [pytest.approx(15.0), pytest.approx(15.0), pytest.approx(15.0)]
 
 
 def test_retry_after_is_capped(tmp_path: Path) -> None:
@@ -148,10 +209,11 @@ def test_retry_after_is_capped(tmp_path: Path) -> None:
     with make_client(TOKEN, tmp_path / "cache.sqlite", handler, sleeper=slept.append) as client:
         with pytest.raises(RateLimitError) as caught:
             client.get_repository("acme", "widgets")
-    assert slept == [60.0]
+    assert slept == [60.0, 60.0, 60.0]
     message = str(caught.value)
     assert "5000 seconds" in message
     assert "cap" in message
+    assert "3 retries" in message
     assert TOKEN not in message
 
 
@@ -200,30 +262,69 @@ def test_http_500_does_not_include_request_headers(tmp_path: Path) -> None:
     assert "Authorization" not in message
 
 
-def test_invalid_json_is_a_github_error(tmp_path: Path) -> None:
-    def handler(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, text="not-json", headers={"ETag": '"x"'})
+def test_invalid_json_with_etag_is_not_served_on_the_next_call(tmp_path: Path) -> None:
+    calls: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        if len(calls) == 1:
+            return httpx.Response(200, text="not-json", headers={"ETag": '"bad"'})
+        assert "if-none-match" not in request.headers
+        return httpx.Response(
+            200,
+            text=repository_body("acme/widgets", "MIT"),
+            headers={"ETag": '"good"'},
+        )
 
     with make_client(TOKEN, tmp_path / "cache.sqlite", handler) as client:
         with pytest.raises(GitHubError) as caught:
             client.get_repository("acme", "widgets")
-    assert "payload" in str(caught.value)
+        payload = client.get_repository("acme", "widgets")
+    assert "invalid JSON" in str(caught.value)
     assert TOKEN not in str(caught.value)
+    assert payload.license is not None and payload.license.spdx_id == "MIT"
+    assert len(calls) == 2
+    assert "if-none-match" not in calls[1].headers
 
 
-def test_304_without_a_cached_body_fails(tmp_path: Path) -> None:
-    def handler(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, text=repository_body("acme/widgets", "MIT"))
+def test_get_uses_the_same_cache_for_json_arrays(tmp_path: Path) -> None:
+    calls: list[httpx.Request] = []
+    link = '<https://api.github.com/repos/acme/widgets/pulls?page=2>; rel="next"'
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        if len(calls) == 1:
+            return httpx.Response(200, text="[1, 2]", headers={"ETag": '"a"', "Link": link})
+        assert request.headers["If-None-Match"] == '"a"'
+        return httpx.Response(304, headers={"ETag": '"a"'})
 
     with make_client(TOKEN, tmp_path / "cache.sqlite", handler) as client:
-        with pytest.raises(GitHubError) as caught:
-            client._interpret(
-                "https://api.github.com/repos/acme/widgets",
-                httpx.Response(304),
-                None,
-            )
-    assert "no cached body" in str(caught.value)
-    assert TOKEN not in str(caught.value)
+        first = client.get("https://api.github.com/repos/acme/widgets/pulls?state=closed")
+        second = client.get("/repos/acme/widgets/pulls?state=closed")
+    assert first.data == [1, 2]
+    assert second.data == [1, 2]
+    assert first.link == link
+    assert second.link == link
+    assert len(calls) == 2
+
+
+def test_sqlite_sidecars_are_private(tmp_path: Path) -> None:
+    cache_path = tmp_path / "cache.sqlite"
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            text=repository_body("acme/widgets", "MIT"),
+            headers={"ETag": '"e"'},
+        )
+
+    with make_client(TOKEN, cache_path, handler) as client:
+        client.get_repository("acme", "widgets")
+        assert cache_path.stat().st_mode & 0o777 == 0o600
+        for suffix in ("-wal", "-shm"):
+            sidecar = Path(f"{cache_path}{suffix}")
+            assert sidecar.is_file()
+            assert sidecar.stat().st_mode & 0o777 == 0o600
 
 
 def test_poisoned_cache_row_is_removed(tmp_path: Path) -> None:
@@ -294,6 +395,17 @@ def test_build_http_client_does_not_follow_redirects_or_trust_env() -> None:
         assert client.trust_env is False
     finally:
         client.close()
+
+
+def test_304_without_a_cached_body_fails(tmp_path: Path) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(304)
+
+    with make_client(TOKEN, tmp_path / "cache.sqlite", handler) as client:
+        with pytest.raises(GitHubError) as caught:
+            client.get("https://api.github.com/repos/acme/widgets")
+    assert "no cached body" in str(caught.value)
+    assert TOKEN not in str(caught.value)
 
 
 def test_dotdot_segment_is_rejected(tmp_path: Path) -> None:

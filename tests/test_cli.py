@@ -1,5 +1,6 @@
 """CLI output must not contain the token."""
 
+import json
 import traceback
 from pathlib import Path
 from types import TracebackType
@@ -98,6 +99,85 @@ def test_cli_redacts_a_token_hidden_in_the_license_payload(
     assert "reason=license_not_allowed" in result.stdout
     assert "spdx=[REDACTED]" in result.stdout
     assert FAKE_TOKEN not in text
+
+
+def test_cli_funnel_refuses_a_repo_that_is_not_allowlisted() -> None:
+    result = runner.invoke(app, ["funnel", "torvalds/linux", "--limit", "30"])
+    text = _command_text(result)
+    assert result.exit_code == 1
+    assert "refused torvalds/linux reason=not_on_allowlist" in result.stdout
+    assert FAKE_TOKEN not in text
+    assert ENV_TOKEN not in text
+
+
+def test_cli_funnel_rejects_an_invalid_name() -> None:
+    result = runner.invoke(app, ["funnel", "not a repo", "--limit", "30"])
+    text = _command_text(result)
+    assert result.exit_code == 2
+    assert "error reason=invalid_repo" in text
+
+
+def test_cli_funnel_rejects_a_non_positive_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write_project(tmp_path, "GITHUB_TOKEN=\n", ["acme/widgets"])
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["funnel", "acme/widgets", "--limit", "0"])
+    text = _command_text(result)
+    assert result.exit_code == 2
+    assert "error reason=config_error" in text
+    assert "positive" in text
+
+
+def test_cli_funnel_prints_counts_without_the_token(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write_project(tmp_path, f"GITHUB_TOKEN={FAKE_TOKEN}\n", ["acme/widgets"])
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("GITHUB_TOKEN", ENV_TOKEN)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/repos/acme/widgets":
+            return httpx.Response(200, text=repository_body("acme/widgets", "MIT"))
+        if request.url.path.endswith("/files"):
+            body = json.dumps(
+                [
+                    {"filename": "pkg/widget.py", "patch": "@@\n+x\n"},
+                    {"filename": "tests/test_widget.py", "patch": "@@\n+y\n"},
+                ]
+            )
+            return httpx.Response(200, text=body)
+        body = json.dumps(
+            [
+                {
+                    "number": 7,
+                    "title": "Handle empty input",
+                    "body": "Fixes #12",
+                    "merged_at": "2024-01-01T00:00:00Z",
+                    "changed_files": 2,
+                    "additions": 10,
+                    "deletions": 1,
+                }
+            ]
+        )
+        return httpx.Response(200, text=body)
+
+    def wrapped(token: str, transport: httpx.BaseTransport | None = None) -> httpx.Client:
+        del transport
+        return build_http_client(token, transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr("forge.github.build_http_client", wrapped)
+    result = runner.invoke(app, ["funnel", "acme/widgets", "--limit", "30"])
+    text = _command_text(result)
+    assert result.exit_code == 0
+    assert "considered 1" in result.stdout
+    assert "accepted 1" in result.stdout
+    assert "not_merged 0" in result.stdout
+    assert "limit 30" in result.stdout
+    assert FAKE_TOKEN not in text
+    assert ENV_TOKEN not in text
 
 
 def test_cli_error_string_hides_a_token_raised_by_the_client(
