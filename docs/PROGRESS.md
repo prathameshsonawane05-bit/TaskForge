@@ -268,3 +268,114 @@ The allowlist file is a small fixed shape (`repos:` plus `- owner/name`) parsed 
 
 Next stage:
 Stage 2: PR fetcher and filters, funnel report with rejection reasons. Waiting for "next".
+
+## Stage 2: PR fetcher, filters, and funnel report (commit 879c231127726ff891c797678e633fbe99ccf542)
+
+What was built:
+`forge funnel owner/name --limit N` reads closed pull requests from the REST pulls API, follows `Link` headers, and prints how many were considered, one count per rejection reason, and how many were accepted. `--limit` caps how many closed pull requests are read. It does not cap accepts. The search API is not used. Nothing is cloned, and repository code is not run.
+
+The same GitHub client now has a generic GET. It sends ETag / `If-None-Match`, caches a 200 only after the body parses as a JSON object or array, retries a real rate limit, does not follow redirects, and sets `trust_env=False`. `forge check` still uses that client.
+
+What was wrong with the stage 1 client:
+- A 403 or 429 slept once and then raised, without making another request. A bare 403, with neither `Retry-After` nor an exhausted rate-limit reset, was labeled `rate_limited`.
+- A 200 body was eligible to be stored before it was checked as JSON, so a bad body saved with an ETag could be replayed on the next call.
+- The database file was mode `0600`, but the SQLite WAL and SHM sidecars were not.
+
+A real rate limit is now retried up to 3 times. Each wait is capped at 60 seconds. The wait comes from `Retry-After`, or from `X-RateLimit-Reset` when `X-RateLimit-Remaining` is 0. A 403 with neither of those is `github_error`: no sleep, and it is not called `rate_limited`. The tests that required exactly one call, and the test that expected `rate_limited` on a bare 403, were replaced. A new test checks that a non-JSON 200 with an ETag is not served on the next call.
+
+Filter order, first match only. The counts plus accepted equal the pull requests considered:
+1. `not_merged` (`merged_at` is null)
+2. `revert` (title starts with "revert")
+3. `too_many_files` (more than 5)
+4. `too_many_lines` (additions + deletions over 300). A missing additions or deletions is `unknown_size`, not 0.
+5. `binary` (suffix in `BINARY_SUFFIXES` in `forge/filters.py`, or an explicit binary flag). A missing patch is not enough, because GitHub also omits the patch on large text diffs.
+6. `lockfile` (`poetry.lock`, `uv.lock`, `Pipfile.lock`, `pdm.lock`, `package-lock.json`, `yarn.lock`, `Cargo.lock`, `go.sum`)
+7. `docs_only`
+8. `missing_source_or_test`. A test file is `test_*.py`, `*_test.py`, `conftest.py`, or any `.py` under `test/` or `tests/`. Any other `.py` file is source.
+9. `no_linked_issue`. The body needs a closing keyword (`close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves`, `resolved`) immediately before `#n` or `owner/repo#n`.
+
+`GET /repos/{owner}/{repo}/pulls` does not include `changed_files`, `additions`, or `deletions`. When those fields are absent, the same client GETs the pull itself. If `changed_files` is over 5, the file list is not requested. Otherwise the files are fetched and the content filters run. A list item that already has `changed_files` is not fetched again, so an explicit missing line count stays `unknown_size`.
+
+Commands run and their real output:
+
+`.venv/bin/ruff check forge tests`
+
+```
+All checks passed!
+```
+
+`.venv/bin/mypy`
+
+```
+Success: no issues found in 22 source files
+```
+
+`.venv/bin/pytest`
+
+```
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/shubhambaviskar/Desktop/TaskForge
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 90 items
+
+tests/test_allowlist.py ....                                             [  4%]
+tests/test_check.py ..............                                       [ 20%]
+tests/test_cli.py .........                                              [ 30%]
+tests/test_config.py ......                                              [ 36%]
+tests/test_filters.py .............................                      [ 68%]
+tests/test_funnel.py ....                                                [ 73%]
+tests/test_git_hygiene.py ...                                            [ 76%]
+tests/test_github.py .....................                               [100%]
+
+============================== 90 passed in 0.41s ==============================
+```
+
+Live funnel. The limit was 30 before the command ran. It was not changed after the accept count came back. pydantic/pydantic has far more than 30 closed pull requests, and the run reported that older ones were not read.
+
+`.venv/bin/forge funnel pydantic/pydantic --limit 30` (exit 0)
+
+```
+repo pydantic/pydantic
+limit 30
+considered 30
+not_merged 12
+revert 0
+too_many_files 3
+too_many_lines 0
+unknown_size 0
+binary 0
+lockfile 4
+docs_only 2
+missing_source_or_test 3
+no_linked_issue 6
+accepted 0
+older_prs_cut_off yes
+```
+
+12 + 3 + 4 + 2 + 3 + 6 + 0 = 30. The limit did cut off older pull requests.
+
+`.venv/bin/forge funnel torvalds/linux --limit 30` (exit 1)
+
+```
+refused torvalds/linux reason=not_on_allowlist
+```
+
+That refusal does not call the API. A byte scan of both command outputs and of `data/github_cache.sqlite` found no copy of the token. The cache file is mode `0600`. No `--platform linux/amd64`. Python is 3.11.14 arm64.
+
+Bugs found and fixed:
+- The stage 1 client slept and failed on the first 403 or 429, and it called a bare 403 `rate_limited`. A bare 403 is now `github_error` with no sleep. A real rate limit is retried.
+- A non-JSON 200 with an ETag was able to be cached and replayed. The body is parsed first, and only a JSON object or array is stored.
+- WAL and SHM files were left at the process umask. They are now mode `0600` along with the database file.
+- The first live funnel marked 18 merged pull requests `unknown_size` and never fetched files. The list resource omits the size fields, and missing fields were treated as unknown. The pull resource is now loaded on the same client before the size filters. The rerun is the funnel pasted above.
+
+Files changed:
+`forge/cli.py`, `forge/filters.py`, `forge/funnel.py`, `forge/github.py`, `forge/models.py`, `tests/test_cli.py`, `tests/test_filters.py`, `tests/test_funnel.py`, `tests/test_github.py`.
+
+Decisions and open questions:
+A 429 that has neither `Retry-After` nor an exhausted reset still waits 1 second and is retried, so the retry is not immediate. The user specified the two headers and the 60 second cap, not this fallback. Documentation is a `.md`, `.rst`, `.txt`, `.adoc`, or `.asciidoc` file, a basename of `LICENSE`, `COPYING`, `AUTHORS`, or `CHANGELOG`, or any file under a `doc/` or `docs/` directory. A `.py` file under `docs/` is documentation for `docs_only`; if the pull request also changes a non-doc file, that `.py` still counts as source. A full `issues/123` URL without `#n` does not count as a linked issue. The printed `older_prs_cut_off` line is there so this report can say whether the limit stopped early. The pre-existing uncommitted edit to `AGENTS.md` was left unstaged.
+
+Next stage:
+Stage 3: patch splitting (source vs tests), linked issue extraction, tests. Waiting for "next".
