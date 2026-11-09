@@ -379,3 +379,133 @@ A 429 that has neither `Retry-After` nor an exhausted reset still waits 1 second
 
 Next stage:
 Stage 3: patch splitting (source vs tests), linked issue extraction, tests. Waiting for "next".
+
+## Stage 3: patch split and linked issue (commit e1c001ab33d69eb1477d44920b5dcbbe4802f4aa)
+
+What was built:
+`forge split owner/name NUMBER` loads one pull request through the same GitHub client. If the funnel would reject it, the command exits 1 and prints that reason. Files are not fetched when an early reason already applies. An accepted pull request is split into two unified diffs (`diff --git`, `---`, and `+++`). Source files go in the solution patch. Test files go in the test patch, using the same definitions as the funnel. A renamed file uses `status` and `previous_filename` when GitHub sends them. A file that is neither source nor test is named and left out of both patches. A missing patch on a source or test file is an error, not an empty diff. The first closing reference in the body (`#N`, `owner/repo#N`, or `https://github.com/owner/repo/issues/N`) is fetched with that same client. `#N` means the pull request's own repository. The issue number, URL, title, and body are kept.
+
+What was wrong with the stage 2 filters:
+- A closing keyword immediately followed by `https://github.com/owner/repo/issues/N` was not a linked issue. The check only allowed `#N` and `owner/repo#N`.
+- A revert was only a title that starts with "revert". A body containing `This reverts commit` was missed.
+
+No other filter changed. A keyword and a number in different sentences still do not link. `Since #13714` is not a closing link.
+
+Commands run and their real output:
+
+`.venv/bin/ruff check forge tests`
+
+```
+All checks passed!
+```
+
+`.venv/bin/mypy`
+
+```
+Success: no issues found in 24 source files
+```
+
+`.venv/bin/pytest`
+
+```
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/shubhambaviskar/Desktop/TaskForge
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 103 items
+
+tests/test_allowlist.py ....                                             [  3%]
+tests/test_check.py ..............                                       [ 17%]
+tests/test_cli.py .........                                              [ 26%]
+tests/test_config.py ......                                              [ 32%]
+tests/test_filters.py ..................................                 [ 65%]
+tests/test_funnel.py ....                                                [ 68%]
+tests/test_git_hygiene.py ...                                            [ 71%]
+tests/test_github.py .....................                               [ 92%]
+tests/test_split.py ........                                             [100%]
+
+============================= 103 passed in 0.41s ==============================
+```
+
+The limit stayed 30. It was not raised after the counts, and no filter was loosened to produce an accept.
+
+`.venv/bin/forge funnel pydantic/pydantic --limit 30` (exit 0)
+
+```
+repo pydantic/pydantic
+limit 30
+considered 30
+not_merged 12
+revert 0
+too_many_files 3
+too_many_lines 0
+unknown_size 0
+binary 0
+lockfile 4
+docs_only 2
+missing_source_or_test 3
+no_linked_issue 6
+accepted 0
+older_prs_cut_off yes
+```
+
+12 + 3 + 4 + 2 + 3 + 6 = 30. Accepted stayed 0, the same as the stage 2 run. Neither new rule moved a pull request into accepted. None of these 30 bodies contains `This reverts commit`. `Since #13714` is still not a closing link, and that pull request stayed `no_linked_issue`. Two bodies do contain a closing keyword immediately before an issues URL, but those pull requests were already rejected earlier (`missing_source_or_test` and `too_many_files`).
+
+The other allowlisted repository, chosen before that command ran, was `psf/requests` at the same limit of 30.
+
+`.venv/bin/forge funnel psf/requests --limit 30` (exit 0)
+
+```
+repo psf/requests
+limit 30
+considered 30
+not_merged 15
+revert 0
+too_many_files 0
+too_many_lines 0
+unknown_size 0
+binary 0
+lockfile 0
+docs_only 1
+missing_source_or_test 14
+no_linked_issue 0
+accepted 0
+older_prs_cut_off yes
+```
+
+15 + 1 + 14 = 30. Accepted is 0 here too. Both limits cut off older pull requests. No live split was run. The fixture command is `forge split acme/widgets 7` against a mocked GitHub. The passing CLI test checks this stdout:
+
+```
+repo acme/widgets
+pull 7
+source pkg/widget.py
+source pkg/renamed.py
+test tests/test_widget.py
+other README.md
+issue https://github.com/acme/widgets/issues/12
+```
+
+`README.md` is not in either patch. `git apply --check` applied both patches in a temporary repository the test created and exited 0. Nothing was cloned, and repository code was not run. The rejected fixture exits 1 with `refused acme/widgets#7 reason=not_merged` and does not request the files URL.
+
+`.venv/bin/forge split torvalds/linux 1` (exit 1)
+
+```
+refused torvalds/linux#1 reason=not_on_allowlist
+```
+
+That refusal does not call the API. A byte scan of the command outputs and of `data/github_cache.sqlite` found no copy of the token. No `--platform linux/amd64`. Python is 3.11.14 arm64.
+
+Bugs found and fixed:
+- The stage 2 closing check dropped a keyword that was immediately followed by an issues URL.
+- The stage 2 revert check ignored `This reverts commit` in the body when the title did not start with "revert".
+
+Files changed:
+`forge/cli.py`, `forge/filters.py`, `forge/github.py`, `forge/models.py`, `forge/split.py`, `tests/test_filters.py`, `tests/test_split.py`.
+
+Decisions and open questions:
+The first closing reference in the body wins. `#N` is an issue in the pull request's repository. `owner/repo#N` and the issues URL name the repository to fetch. The phrase `This reverts commit` is matched exactly and only in the body. A title that merely contains that phrase is not a revert unless the title starts with "revert". An added file uses `--- /dev/null`. A removed file uses `+++ /dev/null`. A path with spaces is quoted. Absolute paths and `..` components are refused. A missing patch on a source or test file is `github_error` and the command exits 2. The pre-existing uncommitted edit to `AGENTS.md` was left unstaged.
+
+Next stage:
+Stage 4: Docker sandbox runner (image per repo and commit, no network, limits, timeout), with tests for the isolation settings. Waiting for "next".
