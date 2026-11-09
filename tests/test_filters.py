@@ -165,3 +165,34 @@ def test_closing_keywords_link_an_issue(body: str) -> None:
 
 def test_keyword_and_issue_in_different_sentences_do_not_link() -> None:
     assert has_linked_issue("Please fix the parser.\n\nTracked as #44.") is False
+    assert (
+        has_linked_issue("Please fix the parser.\n\nSee https://github.com/acme/widgets/issues/44.")
+        is False
+    )
+
+
+def test_issues_url_is_a_linked_issue() -> None:
+    body = "Fixes https://github.com/acme/widgets/issues/15."
+    assert has_linked_issue(body)
+    assert classify_pull(_pull(body=body), _passing_files()) is None
+
+
+def test_since_hash_is_not_a_closing_link() -> None:
+    body = "Since #13714, the parser rejects empty input."
+    assert has_linked_issue(body) is False
+    assert classify_pull(_pull(body=body), _passing_files()) == FilterReason.NO_LINKED_ISSUE
+
+
+def test_body_revert_does_not_need_a_revert_title() -> None:
+    pull = _pull(body="This reverts commit abcdef.\n\nFixes #12")
+    assert classify_pull(pull, None) == FilterReason.REVERT
+
+
+def test_revert_phrase_in_the_title_only_is_not_a_body_revert() -> None:
+    pull = _pull(title="This reverts commit abcdef", body="Fixes #12")
+    assert classify_pull(pull, _passing_files()) is None
+
+
+def test_unmerged_revert_body_is_not_merged() -> None:
+    pull = _pull(merged_at=None, body="This reverts commit abcdef.")
+    assert classify_pull(pull, None) == FilterReason.NOT_MERGED

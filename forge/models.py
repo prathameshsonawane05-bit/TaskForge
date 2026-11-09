@@ -88,6 +88,19 @@ class PullFilePayload(BaseModel):
     filename: str = Field(min_length=1)
     patch: str | None = None
     binary: bool | None = None
+    status: str | None = None
+    previous_filename: str | None = None
+
+
+class IssuePayload(BaseModel):
+    """Fields kept from GET /repos/{owner}/{repo}/issues/{number}."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    number: int
+    html_url: str = Field(min_length=1)
+    title: str = ""
+    body: str | None = None
 
 
 class FunnelCounts(BaseModel):

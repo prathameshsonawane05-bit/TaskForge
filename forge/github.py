@@ -322,6 +322,15 @@ def build_http_client(
     )
 
 
+def issue_url(owner: str, name: str, number: int) -> str:
+    if number < 1 or not _valid_segment(owner) or not _valid_segment(name):
+        raise GitHubError(
+            "Issue reference must be owner/name and a positive issue number.",
+            reason=ReasonCode.GITHUB_ERROR,
+        )
+    return f"{API_ROOT}/repos/{owner}/{name}/issues/{number}"
+
+
 def repository_url(owner: str, name: str) -> str:
     if not _valid_segment(owner) or not _valid_segment(name):
         raise GitHubError(

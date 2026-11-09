@@ -15,13 +15,14 @@ from forge.config import find_repo_root, secret_for_redaction
 from forge.errors import ForgeError, redact
 from forge.funnel import format_report, run_funnel
 from forge.models import ReasonCode
+from forge.split import format_split, run_split
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
 
 
 @app.callback()
 def main() -> None:
-    """Check licenses and count why closed pull requests are kept or refused."""
+    """Check licenses, count pull-request rejections, and split an accepted one."""
 
 
 @app.command("check")
@@ -89,6 +90,43 @@ def funnel_command(
         typer.echo(redact(line, secret))
         raise typer.Exit(code=1)
     typer.echo(redact(format_report(outcome.report), secret))
+
+
+@app.command("split")
+def split_command(
+    repo: Annotated[str, typer.Argument(help="Repository as owner/name.")],
+    number: Annotated[int, typer.Argument(help="Pull request number.")],
+) -> None:
+    """Split one accepted pull request into a source patch and a test patch."""
+    root = find_repo_root()
+    try:
+        outcome = run_split(repo, number, root=root)
+    except Exception as exc:
+        _emit_failure(root, exc)
+        raise typer.Exit(code=2) from None
+    secret = secret_for_redaction(root / ".env")
+    if outcome.report is None:
+        refusal = outcome.repo_refusal
+        if refusal is not None:
+            reason = refusal.reason if refusal.reason is not None else ReasonCode.INTERNAL
+            if refusal.spdx_id is None:
+                line = f"refused {refusal.full_name}#{number} reason={reason}"
+            else:
+                line = (
+                    f"refused {refusal.full_name}#{number} reason={reason} spdx={refusal.spdx_id}"
+                )
+            typer.echo(redact(line, secret))
+            raise typer.Exit(code=1)
+        if outcome.filter_reason is None:
+            _emit_failure(
+                root,
+                ForgeError("Split finished without a report.", reason=ReasonCode.INTERNAL),
+            )
+            raise typer.Exit(code=2) from None
+        line = f"refused {repo}#{number} reason={outcome.filter_reason}"
+        typer.echo(redact(line, secret))
+        raise typer.Exit(code=1)
+    typer.echo(redact(format_split(outcome.report), secret))
 
 
 def _emit_failure(root: Path, exc: Exception) -> None:

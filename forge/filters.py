@@ -5,6 +5,7 @@ large text diffs as well as for binaries.
 """
 
 import re
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 
 from forge.models import FilterReason, PullFilePayload, PullPayload
@@ -77,11 +78,26 @@ DOC_SUFFIXES = frozenset({".md", ".rst", ".txt", ".adoc", ".asciidoc"})
 DOC_BASENAMES = frozenset({"license", "copying", "authors", "changelog"})
 DOC_DIRECTORIES = frozenset({"doc", "docs"})
 
-_REVERT = re.compile(r"(?i)^\s*revert\b")
-_CLOSING = re.compile(
-    r"(?i)\b(?:closes|closed|close|fixes|fixed|fix|resolves|resolved|resolve)\s*:?\s+"
-    r"(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#\d+\b"
+_REVERT_TITLE = re.compile(r"(?i)^\s*revert\b")
+# GitHub writes this sentence into the body of a revert commit.
+_REVERT_BODY = "This reverts commit"
+_KEYWORD = r"closes|closed|close|fixes|fixed|fix|resolves|resolved|resolve"
+_ISSUE_URL = (
+    r"https://github\.com/"
+    r"(?P<url_owner>[A-Za-z0-9_.-]+)/(?P<url_name>[A-Za-z0-9_.-]+)"
+    r"/issues/(?P<url_number>\d+)"
 )
+_HASH_REF = r"(?:(?P<owner>[A-Za-z0-9_.-]+)/(?P<name>[A-Za-z0-9_.-]+))?#(?P<number>\d+)"
+_CLOSING = re.compile(rf"(?i)\b(?:{_KEYWORD})\s*:?\s+(?:{_ISSUE_URL}|{_HASH_REF})\b")
+
+
+@dataclass(frozen=True)
+class ClosingReference:
+    """The first closing reference in a pull-request body."""
+
+    owner: str
+    name: str
+    number: int
 
 
 def classify_pull(
@@ -103,7 +119,7 @@ def early_reason(pull: PullPayload) -> FilterReason | None:
     """Filters that can be decided from the pull list, before fetching files."""
     if pull.merged_at is None:
         return FilterReason.NOT_MERGED
-    if _REVERT.match(pull.title) is not None:
+    if _REVERT_TITLE.match(pull.title) is not None or _body_reverts(pull.body):
         return FilterReason.REVERT
     if pull.changed_files is None:
         return FilterReason.UNKNOWN_SIZE
@@ -168,7 +184,40 @@ def is_source_file(path: str) -> bool:
 
 
 def has_linked_issue(body: str | None) -> bool:
-    """True when the body has a closing keyword immediately before an issue ref."""
+    """True when a closing keyword sits immediately before an issue reference."""
+    return _closing_match(body) is not None
+
+
+def first_closing_reference(
+    body: str | None,
+    *,
+    repo_owner: str,
+    repo_name: str,
+) -> ClosingReference | None:
+    """Return the first closing reference. A bare ``#N`` is this pull request's repo."""
+    match = _closing_match(body)
+    if match is None:
+        return None
+    url_number = match.group("url_number")
+    if url_number is not None:
+        url_owner = match.group("url_owner")
+        url_name = match.group("url_name")
+        if url_owner is None or url_name is None:
+            return None
+        return ClosingReference(url_owner, url_name, int(url_number))
+    number = match.group("number")
+    if number is None:
+        return None
+    owner = match.group("owner") or repo_owner
+    name = match.group("name") or repo_name
+    return ClosingReference(owner, name, int(number))
+
+
+def _closing_match(body: str | None) -> re.Match[str] | None:
     if body is None or body.strip() == "":
-        return False
-    return _CLOSING.search(body) is not None
+        return None
+    return _CLOSING.search(body)
+
+
+def _body_reverts(body: str | None) -> bool:
+    return body is not None and _REVERT_BODY in body
