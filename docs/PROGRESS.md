@@ -811,3 +811,161 @@ The funnel repo and limit were `encode/httpx` and 30, chosen before the run. Acc
 
 Next stage:
 Stage 6: validation gates V1 to V5 with reject reasons. Waiting for "next".
+
+## Stage 6: Validation gates V1 to V5 (commit 6168e94f64254fef939534836f42364dee8524b8)
+
+What was built:
+The classifier treated every status other than pass as a failure. A skip therefore landed in still failing, and a skip that later passed landed in fail-to-pass. A skip in either run is now its own bucket. Fail-to-pass, pass-to-pass, still failing, regression, and skipped sum to the tests that ran.
+
+`forge gates widget` and `forge gates counter` run the gates in order and stop at the first failure. The reasons are `build_failed`, `no_failure_before`, `no_fail_to_pass`, `regression`, `flaky`, and `too_slow`. The spec's check that every fail-to-pass test passed was not implemented, because those ids would be taken from the same run and the check could not fail. `no_fail_to_pass` rejects a run where nothing went from fail to pass. `regression` rejects a test that passed before and did not pass after. A skip is not a failure, so it does not satisfy `no_failure_before`. V6, V7, and V8 were not started.
+
+The widget fixture was not edited. It still has the regression, and the gates reject it for that reason after one container. The counter fixture is a second small project written for this stage: one fail-to-pass test, one pass-to-pass test, no skip, no regression, and no test that fails both times. Its image is built once at the parent commit. Three fresh containers then each apply the patches from that parent. The runtime limit was written down before those runs: the sum of the three container times is too slow when it is over 30 seconds. Local fixtures are not allowlisted. A GitHub repository was not cloned.
+
+Commands run and their real output:
+
+`.venv/bin/ruff check forge tests`
+
+```
+All checks passed!
+```
+
+`.venv/bin/mypy`
+
+```
+Success: no issues found in 31 source files
+```
+
+`.venv/bin/pytest`
+
+```
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/shubhambaviskar/Desktop/TaskForge
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 131 items
+
+tests/test_allowlist.py ....                                             [  3%]
+tests/test_check.py ..............                                       [ 13%]
+tests/test_cli.py .........                                              [ 20%]
+tests/test_config.py ......                                              [ 25%]
+tests/test_filters.py ..................................                 [ 51%]
+tests/test_funnel.py ....                                                [ 54%]
+tests/test_gates.py .............                                        [ 64%]
+tests/test_git_hygiene.py ...                                            [ 66%]
+tests/test_github.py .....................                               [ 82%]
+tests/test_outcomes.py .....                                             [ 86%]
+tests/test_sandbox.py ..........                                         [ 93%]
+tests/test_split.py ........                                             [100%]
+
+============================= 131 passed in 0.97s ==============================
+```
+
+`.venv/bin/forge funnel pallets/click --limit 30` (process status 0). The repo and the limit were chosen before this run.
+
+```
+repo pallets/click
+limit 30
+considered 30
+not_merged 10
+revert 0
+too_many_files 5
+too_many_lines 0
+unknown_size 0
+binary 0
+lockfile 1
+docs_only 4
+missing_source_or_test 4
+no_linked_issue 6
+accepted 0
+older_prs_cut_off yes
+```
+
+Accepted was 0. The filters were left as they were, and no pull request was run.
+
+`.venv/bin/forge gates widget` (process status 1)
+
+```
+repo local/widget
+commit 0542acce42f31b5867250f801a3411f25467cfe0
+image taskforge/local/widget:0542acce42f31b5867250f801a3411f25467cfe0
+memory 512m
+limit_seconds 30
+runs 1
+rejected regression
+run 1 elapsed 2.446
+run 1 before_pytest 1
+run 1 after_pytest 1
+run 1 fail_to_pass 1
+  tests/test_new.py::test_add
+run 1 pass_to_pass 1
+  tests/test_keep.py::test_truth
+run 1 still_failing 1
+  tests/test_still.py::test_still_broken
+run 1 regression 1
+  tests/test_answer.py::test_answer
+run 1 skipped 1
+  tests/test_new.py::test_skipped
+total_elapsed 2.446
+```
+
+The skipped test is in `skipped`, not in still failing. The gates stopped at `regression`, so the three-container check did not run.
+
+`.venv/bin/forge gates counter` (process status 0)
+
+```
+repo local/counter
+commit 52f7ff58eb4a705e09c0edfcd87f82c4612508ae
+image taskforge/local/counter:52f7ff58eb4a705e09c0edfcd87f82c4612508ae
+memory 512m
+limit_seconds 30
+runs 3
+rejected none
+run 1 elapsed 1.154
+run 1 before_pytest 1
+run 1 after_pytest 0
+run 1 fail_to_pass 1
+  tests/test_value.py::test_value
+run 1 pass_to_pass 1
+  tests/test_keep.py::test_truth
+run 1 still_failing 0
+run 1 regression 0
+run 1 skipped 0
+run 2 elapsed 0.827
+run 2 before_pytest 1
+run 2 after_pytest 0
+run 2 fail_to_pass 1
+  tests/test_value.py::test_value
+run 2 pass_to_pass 1
+  tests/test_keep.py::test_truth
+run 2 still_failing 0
+run 2 regression 0
+run 2 skipped 0
+run 3 elapsed 1.302
+run 3 before_pytest 1
+run 3 after_pytest 0
+run 3 fail_to_pass 1
+  tests/test_value.py::test_value
+run 3 pass_to_pass 1
+  tests/test_keep.py::test_truth
+run 3 still_failing 0
+run 3 regression 0
+run 3 skipped 0
+total_elapsed 3.283
+note This project was written to pass, so three matching runs are weak evidence about real flakes.
+```
+
+The three classifications and pytest statuses match. The total time is 3.283 seconds, under the 30 second limit that was chosen before the run. This project was written to pass, so three matching runs are weak evidence about real flakes. `docker image inspect` reported `Arch=arm64 Os=linux`. No `--platform linux/amd64`. The runs stayed at 512m and 1 CPU, with the network off and one read-only patch directory. No run was OOM-killed, so the memory limit was not raised. `docker ps -a` filtered by `taskforge-` listed no containers. A byte scan of these outputs found no copy of the token. Python on the host is 3.11.14 arm64.
+
+Bugs found and fixed:
+- A skip was classified as still failing, and a skip that later passed was classified as fail-to-pass. Skips now have their own bucket.
+
+Files changed:
+`forge/cli.py`, `forge/gates.py`, `forge/outcomes.py`, `forge/widget_fixture.py`, `tests/test_gates.py`, `tests/test_outcomes.py`.
+
+Decisions and open questions:
+The funnel repo and limit were `pallets/click` and 30, chosen before the run. Accepted was 0, so the filters were not changed and no allowlisted pull request was executed. The three-run limit is 30 seconds and was written down before `forge gates counter`. The widget regression was left in place so the fixture is rejected. The counter fixture was written to pass the gates. One pair of pytest runs is still not a validation gate. The pre-existing uncommitted edit to `AGENTS.md` was left unstaged.
+
+Next stage:
+Stage 7: quality checks V6 to V8, instruction builder, and task packager. Waiting for "next".
