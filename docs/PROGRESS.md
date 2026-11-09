@@ -509,3 +509,129 @@ The first closing reference in the body wins. `#N` is an issue in the pull reque
 
 Next stage:
 Stage 4: Docker sandbox runner (image per repo and commit, no network, limits, timeout), with tests for the isolation settings. Waiting for "next".
+
+## Stage 4: Docker sandbox runner (commit bf3e2d69abea1b368ad064fb258f937fe36fdd55)
+
+What was built:
+`forge sandbox owner/name SHA --patch FILE --timeout SECONDS -- COMMAND` checks the allowlist and the license before any clone or `docker build`. A repository that is not allowlisted never reaches Docker. The clone is `git clone` under `data/clones/`, which stays gitignored. The host does not run the repository's tests, setup, or any other repository code. The image tag is `taskforge/<owner>/<name>:<full sha>`. The Dockerfile copies the checkout at that commit and does not `RUN` repository code. Building may use the network. The run uses `--network none`, `--memory 512m`, and `--cpus 1`, and the runner kills the container when the timeout expires and then removes it. The default timeout is 60 seconds. The only host mount is the patch file, read-only, at `/patch`. The host checkout, `.env`, and the Docker socket are not mounted. The container filesystem is not `--read-only`, so a later stage can apply a patch inside the container. `GITHUB_TOKEN` is not passed to git, `docker build`, or `docker run`.
+
+The live repository and commit were chosen before any container was started: `pallets/click` at `8abb77a8432e03ed14a95f972b44f905279415a7` (the default-branch HEAD at selection time). `python:3.11-slim` publishes `linux/arm64/v8`, so the build did not use `--platform linux/amd64`. The built image is `Arch=arm64`.
+
+Commands run and their real output:
+
+`.venv/bin/ruff check forge tests`
+
+```
+All checks passed!
+```
+
+`.venv/bin/mypy`
+
+```
+Success: no issues found in 26 source files
+```
+
+`.venv/bin/pytest`
+
+```
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/shubhambaviskar/Desktop/TaskForge
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 111 items
+
+tests/test_allowlist.py ....                                             [  3%]
+tests/test_check.py ..............                                       [ 16%]
+tests/test_cli.py .........                                              [ 24%]
+tests/test_config.py ......                                              [ 29%]
+tests/test_filters.py ..................................                 [ 60%]
+tests/test_funnel.py ....                                                [ 63%]
+tests/test_git_hygiene.py ...                                            [ 66%]
+tests/test_github.py .....................                               [ 85%]
+tests/test_sandbox.py ........                                           [ 92%]
+tests/test_split.py ........                                             [100%]
+
+============================= 111 passed in 0.44s ==============================
+```
+
+`docker inspect` on the running container `taskforge-8abb77a8432e-c1ab1f5c`:
+
+```
+NetworkMode=none
+Memory=536870912
+NanoCpus=1000000000
+[{"Type":"bind","Source":"/Users/shubhambaviskar/Desktop/TaskForge/data/sandbox/demo.patch","Destination":"/patch","Mode":"","RW":false,"Propagation":"rprivate"}]
+```
+
+Memory `536870912` is 512 MiB. `NanoCpus` `1000000000` is 1 CPU. `RW` false is the read-only patch mount. This machine has 4 CPUs and about 5.8 GiB, so both limits are small.
+
+Command inside that container (not the project's pytest):
+
+`docker exec taskforge-8abb77a8432e-c1ab1f5c python -c 'from pathlib import Path; print(2 + 2); print(Path("/repo/pyproject.toml").is_file())'`
+
+```
+4
+True
+```
+
+Exit 0. The checkout is in the image.
+
+The same command through the CLI, after `--` so Typer does not treat `-c` as an option (exit 0):
+
+`.venv/bin/forge sandbox pallets/click 8abb77a8432e03ed14a95f972b44f905279415a7 --patch data/sandbox/demo.patch --timeout 60 -- python -c 'print(2 + 2)'`
+
+```
+repo pallets/click
+commit 8abb77a8432e03ed14a95f972b44f905279415a7
+image taskforge/pallets/click:8abb77a8432e03ed14a95f972b44f905279415a7
+exit 0
+4
+```
+
+Outbound connection inside the container (exit 1):
+
+`docker exec taskforge-8abb77a8432e-c1ab1f5c python -c 'import urllib.request; urllib.request.urlopen("http://example.com", timeout=5)'`
+
+```
+urllib.error.URLError: <urlopen error [Errno -3] Temporary failure in name resolution>
+```
+
+Write to the mounted patch (exit 1):
+
+`docker exec taskforge-8abb77a8432e-c1ab1f5c python -c 'open("/patch", "a").write("x\n")'`
+
+```
+OSError: [Errno 30] Read-only file system: '/patch'
+```
+
+Timeout demo, override 3 seconds (exit 2):
+
+`.venv/bin/forge sandbox pallets/click 8abb77a8432e03ed14a95f972b44f905279415a7 --patch data/sandbox/demo.patch --timeout 3 sleep 30`
+
+```
+error reason=sandbox_timeout Sandbox run timed out after 3 seconds. Removed container taskforge-8abb77a8432e-e1082ee5.
+```
+
+`docker ps` and `docker ps -a` filtered by that name, and by `taskforge-`, listed no containers.
+
+`.venv/bin/forge sandbox torvalds/linux 8abb77a8432e03ed14a95f972b44f905279415a7 --patch /tmp/does-not-exist true` (exit 1)
+
+```
+refused torvalds/linux reason=not_on_allowlist
+```
+
+That refusal returned without cloning or calling Docker. A byte scan of the command outputs found no copy of the token. No `--platform linux/amd64`. Python is 3.11.14 arm64. Fail-to-pass and pass-to-pass were not started.
+
+Bugs found and fixed:
+None in the live run. The isolation flags the tests require were present on the inspected container.
+
+Files changed:
+`forge/cli.py`, `forge/models.py`, `forge/sandbox.py`, `tests/test_sandbox.py`.
+
+Decisions and open questions:
+The base image is `python:3.11-slim` because it has an arm64 build and the run only needs `python` and `sleep`. The memory limit is 512 MiB and the CPU limit is 1, both well under this machine. The default timeout is 60 seconds; the sleep demo used 3. Git is invoked with `credential.helper=` and `GIT_TERMINAL_PROMPT=0` so a credential helper cannot attach the token. The image tag uses the full SHA, and a unit test uses two SHAs that share a 12-character prefix. Typer treats a leading `-c` as an option, so a `python -c` command is passed after `--`. The pre-existing uncommitted edit to `AGENTS.md` was left unstaged.
+
+Next stage:
+Stage 5: compute fail-to-pass and pass-to-pass by running tests before and after the solution. Waiting for "next".
