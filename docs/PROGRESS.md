@@ -635,3 +635,179 @@ The base image is `python:3.11-slim` because it has an arm64 build and the run o
 
 Next stage:
 Stage 5: compute fail-to-pass and pass-to-pass by running tests before and after the solution. Waiting for "next".
+
+## Stage 5: Compute fail-to-pass and pass-to-pass (commit 491b65c4391bd729e177a9dd74b1078e9d412fc5)
+
+What was built:
+`forge sandbox` used to store the container status, print `exit N`, and then return, so the process status was 0. The container's stderr was not printed. A finished run now exits with the container status, and stderr is printed as well as stdout. A timeout is still process exit 2, and that path prints `reason=sandbox_timeout` rather than `exit 2`. `tests/test_sandbox.py::test_cli_process_status_is_the_container_status` fails if a container exit of 1 becomes a process exit of 0.
+
+`forge outcomes` classifies one pair of pytest runs. It is not a validation gate, and stage 6 was not started. The stage 4 Dockerfile still has no `RUN`. A separate eval Dockerfile installs git and pytest while the image is built. The build may use the network. The run does not. The only host mount is one read-only directory of patches at `/patches`. The checkout, `.env`, and the Docker socket are not mounted. Network stays `none`, memory stays `512m`, and CPUs stay 1. No token is passed to git or Docker. Patches are applied only inside the container, on the parent commit, where the solution is not in the tree. `git apply --check` of the solution has to succeed before the first pytest. The same container then runs pytest with the test patch only, applies the solution, and runs pytest again. Only `PASSED` and `XPASS` count as a pass. `SKIPPED` is not a pass. Each id is fail-to-pass, pass-to-pass, still failing, or a regression, and those four buckets sum to the tests that ran. A unit test feeds known before and after statuses, including a skip that stays a skip, and fails if that skip is counted as a pass.
+
+The live fixture is a small project written for this stage (`local/widget`). It is not someone else's benchmark task. The allowlisted funnel was chosen before it ran: `encode/httpx` at limit 30. It accepted nothing, so no filter was changed and no pull request was run.
+
+Commands run and their real output:
+
+`.venv/bin/ruff check forge tests`
+
+```
+All checks passed!
+```
+
+`.venv/bin/mypy`
+
+```
+Success: no issues found in 29 source files
+```
+
+`.venv/bin/pytest`
+
+```
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/shubhambaviskar/Desktop/TaskForge
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 117 items
+
+tests/test_allowlist.py ....                                             [  3%]
+tests/test_check.py ..............                                       [ 15%]
+tests/test_cli.py .........                                              [ 23%]
+tests/test_config.py ......                                              [ 28%]
+tests/test_filters.py ..................................                 [ 57%]
+tests/test_funnel.py ....                                                [ 60%]
+tests/test_git_hygiene.py ...                                            [ 63%]
+tests/test_github.py .....................                               [ 81%]
+tests/test_outcomes.py ....                                              [ 84%]
+tests/test_sandbox.py ..........                                         [ 93%]
+tests/test_split.py ........                                             [100%]
+
+============================= 117 passed in 0.57s ==============================
+```
+
+`.venv/bin/forge funnel encode/httpx --limit 30` (process status 0)
+
+```
+repo encode/httpx
+limit 30
+considered 30
+not_merged 24
+revert 0
+too_many_files 0
+too_many_lines 0
+unknown_size 0
+binary 0
+lockfile 0
+docs_only 2
+missing_source_or_test 4
+no_linked_issue 0
+accepted 0
+older_prs_cut_off yes
+```
+
+Accepted was 0. The filters were left as they were.
+
+`.venv/bin/forge sandbox pallets/click 8abb77a8432e03ed14a95f972b44f905279415a7 --patch data/sandbox/demo.patch -- python -c 'import sys; print("stdout-line"); print("stderr-line", file=sys.stderr); raise SystemExit(1)'`
+
+Process status 1. Stdout:
+
+```
+repo pallets/click
+commit 8abb77a8432e03ed14a95f972b44f905279415a7
+image taskforge/pallets/click:8abb77a8432e03ed14a95f972b44f905279415a7
+exit 1
+stdout-line
+```
+
+Stderr:
+
+```
+stderr-line
+```
+
+That command went through the CLI, not `docker exec`.
+
+`.venv/bin/forge outcomes` (process status 0). The process status is 0 because the wrapper finished and printed the classification. It is not a gate. Both pytest runs exited 1. The run used 512m and was not killed, so the limit was not raised. `docker image inspect` reported `Arch=arm64 Os=linux`. No `--platform linux/amd64`. `docker ps -a` filtered by `taskforge-` listed no containers.
+
+```
+repo local/widget
+commit 225c00ed99d58023d3c97ec380d87547ab353bd4
+image taskforge/local/widget:225c00ed99d58023d3c97ec380d87547ab353bd4
+memory 512m
+container_exit 0
+before_pytest 1
+after_pytest 1
+solution_absent yes
+note A single run is not a validation gate.
+fail_to_pass 1
+  tests/test_new.py::test_add
+pass_to_pass 1
+  tests/test_keep.py::test_truth
+still_failing 2
+  tests/test_new.py::test_skipped
+  tests/test_still.py::test_still_broken
+regression 1
+  tests/test_answer.py::test_answer
+total 5
+--- before ---
+============================= test session starts ==============================
+platform linux -- Python 3.11.18, pytest-9.2.0, pluggy-1.7.0 -- /usr/local/bin/python
+rootdir: /repo
+collecting ... collected 5 items
+
+tests/test_answer.py::test_answer PASSED                                 [ 20%]
+tests/test_keep.py::test_truth PASSED                                    [ 40%]
+tests/test_new.py::test_add FAILED                                       [ 60%]
+tests/test_new.py::test_skipped SKIPPED (not a pass)                     [ 80%]
+tests/test_still.py::test_still_broken FAILED                            [100%]
+
+=================================== FAILURES ===================================
+E   assert 0 == 2
+     +  where 0 = add(1, 1)
+/repo/tests/test_new.py:7: assert 0 == 2
+E   RuntimeError: still broken
+/repo/widget.py:10: RuntimeError: still broken
+=========================== short test summary info ============================
+FAILED tests/test_new.py::test_add - assert 0 == 2
+FAILED tests/test_still.py::test_still_broken - RuntimeError: still broken
+==================== 2 failed, 2 passed, 1 skipped in 0.01s ====================
+--- before stderr ---
+
+--- after ---
+============================= test session starts ==============================
+platform linux -- Python 3.11.18, pytest-9.2.0, pluggy-1.7.0 -- /usr/local/bin/python
+rootdir: /repo
+collecting ... collected 5 items
+
+tests/test_answer.py::test_answer FAILED                                 [ 20%]
+tests/test_keep.py::test_truth PASSED                                    [ 40%]
+tests/test_new.py::test_add PASSED                                       [ 60%]
+tests/test_new.py::test_skipped SKIPPED (not a pass)                     [ 80%]
+tests/test_still.py::test_still_broken FAILED                            [100%]
+
+=================================== FAILURES ===================================
+E   assert 2 == 1
+     +  where 2 = answer()
+/repo/tests/test_answer.py:5: assert 2 == 1
+E   RuntimeError: still broken
+/repo/widget.py:10: RuntimeError: still broken
+=========================== short test summary info ============================
+FAILED tests/test_answer.py::test_answer - assert 2 == 1
+FAILED tests/test_still.py::test_still_broken - RuntimeError: still broken
+==================== 2 failed, 2 passed, 1 skipped in 0.01s ====================
+--- after stderr ---
+```
+
+`test_add` fails and then passes. `test_truth` passes both times. `test_skipped` is skipped both times and is still failing, not pass-to-pass. `test_still_broken` fails both times. `test_answer` passes and then fails. 1 + 1 + 2 + 1 = 5. The first run shows `add(1, 1)` returning 0, so the solution was not already in the tree. A byte scan of these outputs found no copy of the token. Python on the host is 3.11.14 arm64.
+
+Bugs found and fixed:
+- `forge sandbox` printed the container status and then returned success. The process status is now that container status, and stderr is printed. A timeout is still process exit 2.
+
+Files changed:
+`forge/cli.py`, `forge/sandbox.py`, `forge/outcomes.py`, `forge/widget_fixture.py`, `tests/test_sandbox.py`, `tests/test_outcomes.py`.
+
+Decisions and open questions:
+The funnel repo and limit were `encode/httpx` and 30, chosen before the run. Accepted was 0, so the filters were not changed and no allowlisted pull request was executed. The memory limit stayed 512m because the run was not OOM-killed. The eval image is separate from the stage 4 image so that Dockerfile still has no `RUN`. `forge outcomes` exits 0 when the classification has been printed; `before_pytest` and `after_pytest` are the pytest statuses. One pair of runs is not a validation gate. The pre-existing uncommitted edit to `AGENTS.md` was left unstaged.
+
+Next stage:
+Stage 6: validation gates V1 to V5 with reject reasons. Waiting for "next".
