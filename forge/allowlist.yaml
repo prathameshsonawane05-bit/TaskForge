@@ -1,0 +1,7 @@
+# Repositories TaskForge may read. Membership is not a license approval.
+# The GitHub API must still report one of: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause.
+repos:
+  - pydantic/pydantic
+  - psf/requests
+  - pallets/click
+  - encode/httpx
