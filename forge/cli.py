@@ -1,4 +1,4 @@
-"""CLI for license checks and the closed-pull funnel.
+"""CLI for license checks, the funnel, patch splits, and the sandbox.
 
 Exit status: 0 accepted or a funnel was printed, 1 a repository was refused,
 2 the command could not be completed. Refusals and funnel counts go to stdout.
@@ -15,6 +15,7 @@ from forge.config import find_repo_root, secret_for_redaction
 from forge.errors import ForgeError, redact
 from forge.funnel import format_report, run_funnel
 from forge.models import ReasonCode
+from forge.sandbox import DEFAULT_TIMEOUT_SECONDS, format_success, run_sandbox
 from forge.split import format_split, run_split
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
@@ -22,7 +23,7 @@ app = typer.Typer(add_completion=False, no_args_is_help=True)
 
 @app.callback()
 def main() -> None:
-    """Check licenses, count pull-request rejections, and split an accepted one."""
+    """Check licenses, filter pull requests, split patches, and run a sandbox."""
 
 
 @app.command("check")
@@ -127,6 +128,50 @@ def split_command(
         typer.echo(redact(line, secret))
         raise typer.Exit(code=1)
     typer.echo(redact(format_split(outcome.report), secret))
+
+
+@app.command("sandbox")
+def sandbox_command(
+    repo: Annotated[str, typer.Argument(help="Repository as owner/name.")],
+    sha: Annotated[str, typer.Argument(help="Full 40-character commit SHA.")],
+    command: Annotated[list[str], typer.Argument(help="Command to run inside the container.")],
+    patch: Annotated[Path, typer.Option("--patch", help="Patch file mounted read-only at /patch.")],
+    timeout: Annotated[
+        int,
+        typer.Option("--timeout", help="Seconds before the run is killed. Default is 60."),
+    ] = DEFAULT_TIMEOUT_SECONDS,
+) -> None:
+    """Run a command in a network-free container for one repository commit."""
+    root = find_repo_root()
+    try:
+        outcome = run_sandbox(
+            repo,
+            sha,
+            command,
+            root=root,
+            patch=patch,
+            timeout=timeout,
+        )
+    except Exception as exc:
+        _emit_failure(root, exc)
+        raise typer.Exit(code=2) from None
+    secret = secret_for_redaction(root / ".env")
+    if outcome.success is None:
+        refusal = outcome.refusal
+        if refusal is None:
+            _emit_failure(
+                root,
+                ForgeError("Sandbox finished without a result.", reason=ReasonCode.INTERNAL),
+            )
+            raise typer.Exit(code=2) from None
+        reason = refusal.reason if refusal.reason is not None else ReasonCode.INTERNAL
+        if refusal.spdx_id is None:
+            line = f"refused {refusal.full_name} reason={reason}"
+        else:
+            line = f"refused {refusal.full_name} reason={reason} spdx={refusal.spdx_id}"
+        typer.echo(redact(line, secret))
+        raise typer.Exit(code=1)
+    typer.echo(redact(format_success(outcome.success), secret))
 
 
 def _emit_failure(root: Path, exc: Exception) -> None:

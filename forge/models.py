@@ -17,6 +17,8 @@ class ReasonCode(StrEnum):
     GITHUB_ERROR = "github_error"
     INVALID_REPO = "invalid_repo"
     CONFIG_ERROR = "config_error"
+    SANDBOX_TIMEOUT = "sandbox_timeout"
+    SANDBOX_ERROR = "sandbox_error"
     INTERNAL = "internal"
 
 
