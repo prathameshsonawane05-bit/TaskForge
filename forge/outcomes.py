@@ -52,6 +52,7 @@ class Classification:
     pass_to_pass: tuple[str, ...]
     still_failing: tuple[str, ...]
     regression: tuple[str, ...]
+    skipped: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,7 @@ class TrialReport:
     before_status: int
     after_status: int
     classification: Classification
+    failed_before: tuple[str, ...]
     before_stdout: str
     before_stderr: str
     after_stdout: str
@@ -88,16 +90,23 @@ def parse_pytest_verbose(text: str) -> dict[str, str]:
 
 
 def classify(before: Mapping[str, str], after: Mapping[str, str]) -> Classification:
-    """Bucket every id that ran. Only the status ``pass`` counts as a pass."""
+    """Bucket every id that ran.
+
+    A skip in either run is skipped. It is not still failing, and a skip
+    that later passes is not fail-to-pass. Only ``pass`` counts as a pass.
+    """
     fail_to_pass: list[str] = []
     pass_to_pass: list[str] = []
     still_failing: list[str] = []
     regression: list[str] = []
+    skipped: list[str] = []
     ids = sorted(set(before) | set(after))
     for test_id in ids:
         left = before.get(test_id)
         right = after.get(test_id)
-        if left != "pass" and right == "pass":
+        if left == "skip" or right == "skip":
+            skipped.append(test_id)
+        elif left != "pass" and right == "pass":
             fail_to_pass.append(test_id)
         elif left == "pass" and right == "pass":
             pass_to_pass.append(test_id)
@@ -110,12 +119,14 @@ def classify(before: Mapping[str, str], after: Mapping[str, str]) -> Classificat
         pass_to_pass=tuple(pass_to_pass),
         still_failing=tuple(still_failing),
         regression=tuple(regression),
+        skipped=tuple(skipped),
     )
     total = (
         len(result.fail_to_pass)
         + len(result.pass_to_pass)
         + len(result.still_failing)
         + len(result.regression)
+        + len(result.skipped)
     )
     if total != len(ids):
         raise ForgeError(
@@ -123,6 +134,34 @@ def classify(before: Mapping[str, str], after: Mapping[str, str]) -> Classificat
             reason=ReasonCode.INTERNAL,
         )
     return result
+
+
+def run_trial_container(
+    *,
+    full_name: str,
+    sha: str,
+    image: str,
+    patches: Path,
+    checkout: Path,
+    root: Path,
+    timeout: float = DEFAULT_TIMEOUT_SECONDS,
+    executor: Executor | None = None,
+    base_env: Mapping[str, str] | None = None,
+) -> TrialReport:
+    """Apply both patches inside one fresh container and classify the two pytest runs."""
+    outcome = run_mounted(
+        full_name=full_name,
+        sha=sha,
+        image=image,
+        command=["sh", "-c", TRIAL_SCRIPT],
+        mount=patches,
+        checkout=checkout,
+        root=root,
+        timeout=timeout,
+        executor=executor,
+        base_env=base_env,
+    )
+    return _report(outcome, image=image)
 
 
 def run_widget_trial(
@@ -145,19 +184,17 @@ def run_widget_trial(
         base_env=base_env,
         host_platform=host_platform,
     )
-    outcome = run_mounted(
+    return run_trial_container(
         full_name="local/widget",
         sha=prepared.sha,
         image=image,
-        command=["sh", "-c", TRIAL_SCRIPT],
-        mount=prepared.patches,
+        patches=prepared.patches,
         checkout=prepared.checkout,
         root=root,
         timeout=timeout,
         executor=executor,
         base_env=base_env,
     )
-    return _report(outcome, image=image)
 
 
 def format_trial(report: TrialReport) -> str:
@@ -166,6 +203,7 @@ def format_trial(report: TrialReport) -> str:
         ("pass_to_pass", report.classification.pass_to_pass),
         ("still_failing", report.classification.still_failing),
         ("regression", report.classification.regression),
+        ("skipped", report.classification.skipped),
     )
     total = sum(len(ids) for _name, ids in groups)
     lines = [
@@ -232,6 +270,9 @@ def _report(outcome: SandboxSuccess, *, image: str) -> TrialReport:
         before_status=_status(outcome.stdout, "BEFORE_STATUS"),
         after_status=_status(outcome.stdout, "AFTER_STATUS"),
         classification=classify(before, after),
+        failed_before=tuple(
+            sorted(test_id for test_id, status in before.items() if status == "fail")
+        ),
         before_stdout=before_stdout,
         before_stderr=before_stderr,
         after_stdout=after_stdout,

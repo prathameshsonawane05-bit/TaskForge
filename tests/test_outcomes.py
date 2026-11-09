@@ -85,21 +85,20 @@ def test_known_before_and_after_results() -> None:
     result = classify(before, after)
     assert result.fail_to_pass == ("pkg/test_new.py::test_add",)
     assert result.pass_to_pass == ("pkg/test_keep.py::test_truth",)
-    assert result.still_failing == (
-        "pkg/test_new.py::test_skipped",
-        "pkg/test_still.py::test_still_broken",
-    )
+    assert result.still_failing == ("pkg/test_still.py::test_still_broken",)
     assert result.regression == ("pkg/test_answer.py::test_answer",)
+    assert result.skipped == ("pkg/test_new.py::test_skipped",)
     total = (
         len(result.fail_to_pass)
         + len(result.pass_to_pass)
         + len(result.still_failing)
         + len(result.regression)
+        + len(result.skipped)
     )
     assert total == len(set(before) | set(after))
 
 
-def test_skip_then_skip_is_not_a_pass() -> None:
+def test_skip_then_skip_is_not_still_failing() -> None:
     result = classify(
         {"tests/test_new.py::test_skipped": "skip"},
         {"tests/test_new.py::test_skipped": "skip"},
@@ -107,7 +106,18 @@ def test_skip_then_skip_is_not_a_pass() -> None:
     assert result.pass_to_pass == ()
     assert result.fail_to_pass == ()
     assert result.regression == ()
-    assert result.still_failing == ("tests/test_new.py::test_skipped",)
+    assert result.still_failing == ()
+    assert result.skipped == ("tests/test_new.py::test_skipped",)
+
+
+def test_skip_then_pass_is_not_fail_to_pass() -> None:
+    result = classify(
+        {"pkg/test_new.py::test_skipped": "skip"},
+        {"pkg/test_new.py::test_skipped": "pass"},
+    )
+    assert result.fail_to_pass == ()
+    assert result.skipped == ("pkg/test_new.py::test_skipped",)
+    assert result.pass_to_pass == ()
 
 
 def test_summary_line_does_not_override_a_pass() -> None:
@@ -135,16 +145,15 @@ def test_trial_mounts_only_the_patch_directory(tmp_path: Path) -> None:
     )
     assert report.classification.fail_to_pass == ("tests/test_new.py::test_add",)
     assert report.classification.pass_to_pass == ("tests/test_keep.py::test_truth",)
-    assert report.classification.still_failing == (
-        "tests/test_new.py::test_skipped",
-        "tests/test_still.py::test_still_broken",
-    )
+    assert report.classification.still_failing == ("tests/test_still.py::test_still_broken",)
     assert report.classification.regression == ("tests/test_answer.py::test_answer",)
+    assert report.classification.skipped == ("tests/test_new.py::test_skipped",)
     counted = (
         len(report.classification.fail_to_pass)
         + len(report.classification.pass_to_pass)
         + len(report.classification.still_failing)
         + len(report.classification.regression)
+        + len(report.classification.skipped)
     )
     assert counted == 5
     checkout = tmp_path / "data" / "fixtures" / "widget" / "repo"

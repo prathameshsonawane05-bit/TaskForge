@@ -15,6 +15,7 @@ from forge.check import check_repository
 from forge.config import find_repo_root, secret_for_redaction
 from forge.errors import ForgeError, redact
 from forge.funnel import format_report, run_funnel
+from forge.gates import format_gates, run_fixture_gates
 from forge.models import ReasonCode
 from forge.outcomes import format_trial, run_widget_trial
 from forge.sandbox import DEFAULT_TIMEOUT_SECONDS, format_success, run_sandbox
@@ -197,6 +198,27 @@ def outcomes_command(
         raise typer.Exit(code=2) from None
     secret = secret_for_redaction(root / ".env")
     typer.echo(redact(format_trial(report), secret))
+
+
+@app.command("gates")
+def gates_command(
+    fixture: Annotated[str, typer.Argument(help="Local fixture: widget or counter.")],
+    timeout: Annotated[
+        int,
+        typer.Option("--timeout", help="Seconds before one container is killed. Default is 60."),
+    ] = DEFAULT_TIMEOUT_SECONDS,
+) -> None:
+    """Run gates V1 to V5. The first failure is the only reject reason."""
+    root = find_repo_root()
+    try:
+        report = run_fixture_gates(fixture, root=root, timeout=timeout)
+    except Exception as exc:
+        _emit_failure(root, exc)
+        raise typer.Exit(code=2) from None
+    secret = secret_for_redaction(root / ".env")
+    typer.echo(redact(format_gates(report), secret))
+    if report.reason is not None:
+        raise typer.Exit(code=1)
 
 
 def _emit_failure(root: Path, exc: Exception) -> None:
