@@ -17,6 +17,7 @@ def test_real_allowlist_names_the_chosen_repos() -> None:
         "psf/requests",
         "pallets/click",
         "encode/httpx",
+        "pallets/itsdangerous",
     )
 
 
