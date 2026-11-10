@@ -1,0 +1,8 @@
+diff --git a/counter.py b/counter.py
+index 9fbaa96..7c41bd2 100644
+--- a/counter.py
++++ b/counter.py
+@@ -1,2 +1,2 @@
+ def value() -> int:
+-    return 0
++    return 1

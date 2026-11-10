@@ -1,0 +1,8 @@
+{
+  "f2p": [
+    "tests/test_value.py::test_value"
+  ],
+  "p2p": [
+    "tests/test_keep.py::test_truth"
+  ]
+}

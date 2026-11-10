@@ -37,6 +37,29 @@ def test_spec_path_is_lowercase_docs() -> None:
     assert not any(path.startswith("Docs/") for path in tracked)
 
 
+def test_sample_is_tracked() -> None:
+    root = find_repo_root()
+    tracked = _tracked(root)
+    sample = "output/sample/local-counter"
+    names = (
+        "task.json",
+        "instruction.md",
+        "solution/solution.patch",
+        "tests/test.patch",
+        "tests/config.json",
+        "ATTRIBUTION.md",
+    )
+    for name in names:
+        path = f"{sample}/{name}"
+        assert path in tracked
+        ignored = subprocess.run(
+            ["git", "check-ignore", "-q", path],
+            cwd=root,
+            check=False,
+        )
+        assert ignored.returncode != 0
+
+
 def test_ds_store_is_ignored() -> None:
     root = find_repo_root()
     assert ".DS_Store" not in _tracked(root)

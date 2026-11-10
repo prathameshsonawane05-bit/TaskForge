@@ -51,6 +51,7 @@ class GateRun:
     after_status: int
     failed_before: tuple[str, ...]
     elapsed: float
+    before_stdout: str = ""
 
 
 @dataclass(frozen=True)
@@ -237,4 +238,5 @@ def _gate_run(report: TrialReport, elapsed: float) -> GateRun:
         after_status=report.after_status,
         failed_before=report.failed_before,
         elapsed=elapsed,
+        before_stdout=report.before_stdout,
     )

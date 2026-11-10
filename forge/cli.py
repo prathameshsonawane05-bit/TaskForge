@@ -18,6 +18,7 @@ from forge.funnel import format_report, run_funnel
 from forge.gates import format_gates, run_fixture_gates
 from forge.models import ReasonCode
 from forge.outcomes import format_trial, run_widget_trial
+from forge.package import format_package, package_fixture
 from forge.sandbox import DEFAULT_TIMEOUT_SECONDS, format_success, run_sandbox
 from forge.split import format_split, run_split
 
@@ -218,6 +219,27 @@ def gates_command(
     secret = secret_for_redaction(root / ".env")
     typer.echo(redact(format_gates(report), secret))
     if report.reason is not None:
+        raise typer.Exit(code=1)
+
+
+@app.command("package")
+def package_command(
+    fixture: Annotated[str, typer.Argument(help="Local fixture: widget or counter.")],
+    timeout: Annotated[
+        int,
+        typer.Option("--timeout", help="Seconds before one container is killed. Default is 60."),
+    ] = DEFAULT_TIMEOUT_SECONDS,
+) -> None:
+    """Package a fixture the gates accept. A rejection writes nothing."""
+    root = find_repo_root()
+    try:
+        result = package_fixture(fixture, root=root, timeout=timeout)
+    except Exception as exc:
+        _emit_failure(root, exc)
+        raise typer.Exit(code=2) from None
+    secret = secret_for_redaction(root / ".env")
+    typer.echo(redact(format_package(result), secret))
+    if not result.written:
         raise typer.Exit(code=1)
 
 

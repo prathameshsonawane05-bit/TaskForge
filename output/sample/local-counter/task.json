@@ -1,0 +1,16 @@
+{
+  "task_id": "local-counter",
+  "repo": "local/counter",
+  "license": "no upstream",
+  "pr_url": "no upstream",
+  "issue_url": "no upstream",
+  "base_commit": "c7c4e41913720631800d0f647185c5af60a81cc5",
+  "difficulty_signals": "Difficulty is an estimate. This task was not run against an agent.",
+  "f2p": [
+    "tests/test_value.py::test_value"
+  ],
+  "p2p": [
+    "tests/test_keep.py::test_truth"
+  ],
+  "tool_version": "0.1.0"
+}

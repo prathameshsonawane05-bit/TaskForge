@@ -137,6 +137,15 @@ def test_value() -> None:
     assert value() == 1
 """
 
+COUNTER_ISSUE = """\
+value() should return 1.
+
+Calling value() does not return 1 today. It should return 1.
+"""
+
+# Both dates are pinned so the parent commit does not change between runs.
+FIXTURE_COMMIT_DATE = "2020-01-01T00:00:00Z"
+
 
 def prepare_counter(root: Path) -> PreparedWidget:
     """Commit a parent with one passing test and a bug in value()."""
@@ -248,6 +257,12 @@ def _git_env() -> dict[str, str]:
         for key, value in os.environ.items()
         if key.upper() not in _SECRET_KEYS
     }
+    env["GIT_AUTHOR_DATE"] = FIXTURE_COMMIT_DATE
+    env["GIT_COMMITTER_DATE"] = FIXTURE_COMMIT_DATE
+    env["GIT_AUTHOR_NAME"] = "taskforge"
+    env["GIT_AUTHOR_EMAIL"] = "fixture@taskforge.local"
+    env["GIT_COMMITTER_NAME"] = "taskforge"
+    env["GIT_COMMITTER_EMAIL"] = "fixture@taskforge.local"
     env["GIT_TERMINAL_PROMPT"] = "0"
     env["GIT_PAGER"] = "cat"
     return env
