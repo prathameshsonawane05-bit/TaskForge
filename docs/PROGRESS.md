@@ -1370,3 +1370,70 @@ The two files use the funnel field names, with `older_prs_cut_off` written as `y
 
 Next stage:
 Stage 11: docs and CI. Waiting for "next".
+
+## Stage 11: README, design, and CI (commit f48460f997c26eca4ad308f2d9fb8502c889a88d)
+
+What was built:
+`README.md` now stands alone for a fresh clone: create a Python 3.11 virtualenv, install with the dev extras, and save the token with `bash scripts/set_token.sh`. The token stays in `.env`, which git ignores. Public-repository read access is enough. The README names `forge check`, `forge funnel`, `forge report`, `forge split`, `forge sandbox`, `forge outcomes`, `forge gates`, and `forge package`. `ruff`, `mypy`, and `pytest` do not need a token or Docker. `sandbox`, `outcomes`, `gates`, and `package` need Docker, and repository code runs only inside that sandbox.
+
+`docs/DESIGN.md` records the filter order, the sandbox limits (no network, 512m, 1 CPU, timeout, read-only patch mount), gates V1 through V8, and the JSON and Markdown funnel report. The report repeats the funnel counts. It does not contain precision or recall. The same limitations are in the README and in the design note. The labeled evaluation and the held-out window were written by the same author as the filters. The funnel accepted none in either window, so precision is undefined and recall is undefined. Agreement on those rejects is not evidence that an accept would be right. The only committed task is `output/sample/local-counter`. It has no upstream repository, and it was written to pass the gates.
+
+`.github/workflows/ci.yml` runs on Ubuntu with Python 3.11. The job steps are `ruff check forge tests`, `mypy`, and `pytest`. They do not call the GitHub API, start Docker, read a token, or pass `--platform`. `actions/checkout` retrieves the git tree. A test fails if the workflow omits any of those three commands or contains a token value. The suite passed here without a live token or a Docker daemon, so no test was weakened and no secret was added. The dashboard was not built. No filter, rubric, label, or gate was changed. Stage 12 was not started.
+
+Commands run and their real output:
+
+`.venv/bin/ruff check forge tests`
+
+```
+All checks passed!
+```
+
+`.venv/bin/mypy`
+
+```
+Success: no issues found in 37 source files
+```
+
+`.venv/bin/pytest`
+
+```
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/shubhambaviskar/Desktop/TaskForge
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 148 items
+
+tests/test_allowlist.py ....                                             [  2%]
+tests/test_check.py ..............                                       [ 12%]
+tests/test_ci.py .                                                       [ 12%]
+tests/test_cli.py .........                                              [ 18%]
+tests/test_config.py ......                                              [ 22%]
+tests/test_filters.py ..................................                 [ 45%]
+tests/test_funnel.py ....                                                [ 48%]
+tests/test_gates.py .............                                        [ 57%]
+tests/test_git_hygiene.py ....                                           [ 60%]
+tests/test_github.py .....................                               [ 74%]
+tests/test_outcomes.py .....                                             [ 77%]
+tests/test_quality.py ............                                       [ 85%]
+tests/test_report.py ...                                                 [ 87%]
+tests/test_sandbox.py ..........                                         [ 94%]
+tests/test_split.py ........                                             [100%]
+
+============================= 148 passed in 2.51s ==============================
+```
+
+Python on the host is 3.11.14 arm64. The token was not printed.
+
+Bugs found and fixed:
+None.
+
+Files changed:
+`README.md`, `docs/DESIGN.md`, `.github/workflows/ci.yml`, `tests/test_ci.py`.
+
+Decisions and open questions:
+The checkout action is the only step that contacts GitHub, and it only fetches this repository. The pre-existing uncommitted edit to `AGENTS.md` was left unstaged.
+
+Next stage:
+Stage 12: fresh-clone audit. Waiting for "next".
