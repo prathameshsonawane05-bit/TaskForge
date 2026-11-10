@@ -1437,3 +1437,299 @@ The checkout action is the only step that contacts GitHub, and it only fetches t
 
 Next stage:
 Stage 12: fresh-clone audit. Waiting for "next".
+
+## Stage 12: Fresh-clone audit (commit 94869178d5367b587b363ce2371c1ef3f372b850)
+
+What was built:
+The README said `forge split` writes patch files. It prints the source names, the test names, the other names, and the issue URL. It does not write those files. That sentence was corrected in `318f04234b502db15fa3062cd5b022621a5dbfe6`. `docs/DESIGN.md` does not say that `forge split` writes files, so it was left unchanged.
+
+`python3.11 -m venv .venv` fails for the uv-managed Python 3.11.14 on this machine. The new environment cannot find the standard library (`sys.base_prefix` is `/install`). `uv venv --python 3.11 .venv` creates a working environment, and `--seed` is required so `python -m pip` exists. Those two facts were added to the README in `2ce20c6a71f4870d6ef6af9aacea51c2f85de99c` and `94869178d5367b587b363ce2371c1ef3f372b850`. The clone used for the checks is that last commit. No filter, rubric, label, or gate was changed. The dashboard was not built.
+
+The clone is `git clone` of the committed HEAD. `.venv`, `.env`, `data/`, and `output/` were not copied. The unstaged `AGENTS.md` edit stayed in the original repo and was not in the clone. The clone has no `.env`. `ruff`, `mypy`, and `pytest` were run there with no token file and no Docker. `git ls-files` tracks no `.env`, no `data/`, no cache, no clone checkout, and no `output/reports` file. The committed sample is `output/sample/local-counter/`. `.env.example` is tracked and contains only `GITHUB_TOKEN=your_token_here`.
+
+Docker was running (Colima, server 27.4.0). The first clone was under `/tmp`, which resolves to `/private/tmp`. The patch directories existed on the host, and the daemon still reported that the bind source did not exist. The same commit was cloned to `/Users/shubhambaviskar/taskforge-stage12-audit`, which the daemon can mount. `forge outcomes`, `forge gates counter`, and `forge package counter` were run there. They use the local fixtures inside the sandbox. No upstream repository tests were run on the host. The GitHub API was not called. The token was not printed.
+
+Commands run and their real output:
+
+`git clone /Users/shubhambaviskar/Desktop/TaskForge /tmp/taskforge-stage12` then `git rev-parse HEAD`
+
+```
+Cloning into '/tmp/taskforge-stage12'...
+done.
+94869178d5367b587b363ce2371c1ef3f372b850
+```
+
+`python3.11 -m venv .venv` in that clone (process status 1)
+
+```
+Error: Command '['/private/tmp/taskforge-stage12/.venv/bin/python3.11', '-m', 'ensurepip', '--upgrade', '--default-pip']' returned non-zero exit status 1.
+```
+
+`uv venv --python 3.11 --seed .venv` then `python -m pip install -e ".[dev]"` (process status 0). The installer printed the downloaded packages and ended with:
+
+```
+Successfully installed annotated-doc-0.0.5 annotated-types-0.8.0 anyio-4.16.0 ast-serialize-0.13.1 certifi-2026.10.23 h11-0.16.0 httpcore-1.0.9 httpx-0.28.1 idna-3.20 iniconfig-2.3.1 librt-0.16.0 markdown-it-py-4.2.0 mdurl-0.1.2 mypy-2.4.1 mypy_extensions-1.2.0 pathspec-1.1.1 pluggy-1.7.0 pydantic-2.14.3 pydantic-core-2.50.4 pygments-2.21.0 pytest-9.2.0 rich-15.0.0 ruff-0.17.4 shellingham-1.5.4 taskforge-0.1.0 typer-0.29.0 typing-inspection-0.4.5 typing_extensions-4.16.0
+```
+
+`.venv/bin/ruff check forge tests`
+
+```
+All checks passed!
+```
+
+`.venv/bin/mypy`
+
+```
+Success: no issues found in 37 source files
+```
+
+`.venv/bin/pytest`
+
+```
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /private/tmp/taskforge-stage12
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 148 items
+
+tests/test_allowlist.py ....                                             [  2%]
+tests/test_check.py ..............                                       [ 12%]
+tests/test_ci.py .                                                       [ 12%]
+tests/test_cli.py .........                                              [ 18%]
+tests/test_config.py ......                                              [ 22%]
+tests/test_filters.py ..................................                 [ 45%]
+tests/test_funnel.py ....                                                [ 48%]
+tests/test_gates.py .............                                        [ 57%]
+tests/test_git_hygiene.py ....                                           [ 60%]
+tests/test_github.py .....................                               [ 74%]
+tests/test_outcomes.py .....                                             [ 77%]
+tests/test_quality.py ............                                       [ 85%]
+tests/test_report.py ...                                                 [ 87%]
+tests/test_sandbox.py ..........                                         [ 94%]
+tests/test_split.py ........                                             [100%]
+
+============================= 148 passed in 2.48s ==============================
+```
+
+`git ls-files` in the clone
+
+```
+.env.example
+.github/workflows/ci.yml
+.gitignore
+AGENTS.md
+README.md
+docs/DESIGN.md
+docs/EVALUATION.md
+docs/MENTOR.md
+docs/PROGRESS.md
+docs/SPEC.md
+forge/__init__.py
+forge/__main__.py
+forge/allowlist.py
+forge/allowlist.yaml
+forge/check.py
+forge/cli.py
+forge/config.py
+forge/errors.py
+forge/filters.py
+forge/funnel.py
+forge/gates.py
+forge/github.py
+forge/models.py
+forge/outcomes.py
+forge/package.py
+forge/quality.py
+forge/report.py
+forge/sandbox.py
+forge/split.py
+forge/widget_fixture.py
+output/sample/local-counter/ATTRIBUTION.md
+output/sample/local-counter/instruction.md
+output/sample/local-counter/solution/solution.patch
+output/sample/local-counter/task.json
+output/sample/local-counter/tests/config.json
+output/sample/local-counter/tests/test.patch
+pyproject.toml
+scripts/set_token.sh
+tests/__init__.py
+tests/conftest.py
+tests/fakes.py
+tests/test_allowlist.py
+tests/test_check.py
+tests/test_ci.py
+tests/test_cli.py
+tests/test_config.py
+tests/test_filters.py
+tests/test_funnel.py
+tests/test_gates.py
+tests/test_git_hygiene.py
+tests/test_github.py
+tests/test_outcomes.py
+tests/test_quality.py
+tests/test_report.py
+tests/test_sandbox.py
+tests/test_split.py
+```
+
+`git show HEAD:.env.example`
+
+```
+GITHUB_TOKEN=your_token_here
+```
+
+`.venv/bin/forge outcomes` in `/tmp/taskforge-stage12` (process status 2). The daemon was up. The patch directory existed on the host.
+
+```
+error reason=sandbox_error docker run failed. docker: Error response from daemon: invalid mount config for type "bind": bind source path does not exist: /private/tmp/taskforge-stage12/data/fixtures/widget/patches. See 'docker run --help'.
+```
+
+`forge gates counter` and `forge package counter` failed the same way for `data/fixtures/counter/patches`.
+
+The same three commands in `/Users/shubhambaviskar/taskforge-stage12-audit` (process status 0):
+
+`.venv/bin/forge outcomes`
+
+```
+repo local/widget
+commit bca1b0b89b4586655785c20cec3a3f00400f388e
+image taskforge/local/widget:bca1b0b89b4586655785c20cec3a3f00400f388e
+memory 512m
+container_exit 0
+before_pytest 1
+after_pytest 1
+solution_absent yes
+note A single run is not a validation gate.
+fail_to_pass 1
+  tests/test_new.py::test_add
+pass_to_pass 1
+  tests/test_keep.py::test_truth
+still_failing 1
+  tests/test_still.py::test_still_broken
+regression 1
+  tests/test_answer.py::test_answer
+skipped 1
+  tests/test_new.py::test_skipped
+total 5
+--- before ---
+============================= test session starts ==============================
+platform linux -- Python 3.11.18, pytest-9.2.0, pluggy-1.7.0 -- /usr/local/bin/python
+rootdir: /repo
+collecting ... collected 5 items
+
+tests/test_answer.py::test_answer PASSED                                 [ 20%]
+tests/test_keep.py::test_truth PASSED                                    [ 40%]
+tests/test_new.py::test_add FAILED                                       [ 60%]
+tests/test_new.py::test_skipped SKIPPED (not a pass)                     [ 80%]
+tests/test_still.py::test_still_broken FAILED                            [100%]
+
+=================================== FAILURES ===================================
+E   assert 0 == 2
+     +  where 0 = add(1, 1)
+/repo/tests/test_new.py:7: assert 0 == 2
+E   RuntimeError: still broken
+/repo/widget.py:10: RuntimeError: still broken
+=========================== short test summary info ============================
+FAILED tests/test_new.py::test_add - assert 0 == 2
+FAILED tests/test_still.py::test_still_broken - RuntimeError: still broken
+==================== 2 failed, 2 passed, 1 skipped in 0.02s ====================
+--- before stderr ---
+
+--- after ---
+============================= test session starts ==============================
+platform linux -- Python 3.11.18, pytest-9.2.0, pluggy-1.7.0 -- /usr/local/bin/python
+rootdir: /repo
+collecting ... collected 5 items
+
+tests/test_answer.py::test_answer FAILED                                 [ 20%]
+tests/test_keep.py::test_truth PASSED                                    [ 40%]
+tests/test_new.py::test_add PASSED                                       [ 60%]
+tests/test_new.py::test_skipped SKIPPED (not a pass)                     [ 80%]
+tests/test_still.py::test_still_broken FAILED                            [100%]
+
+=================================== FAILURES ===================================
+E   assert 2 == 1
+     +  where 2 = answer()
+/repo/tests/test_answer.py:5: assert 2 == 1
+E   RuntimeError: still broken
+/repo/widget.py:10: RuntimeError: still broken
+=========================== short test summary info ============================
+FAILED tests/test_answer.py::test_answer - assert 2 == 1
+FAILED tests/test_still.py::test_still_broken - RuntimeError: still broken
+==================== 2 failed, 2 passed, 1 skipped in 0.01s ====================
+--- after stderr ---
+```
+
+`.venv/bin/forge gates counter`
+
+```
+repo local/counter
+commit c7c4e41913720631800d0f647185c5af60a81cc5
+image taskforge/local/counter:c7c4e41913720631800d0f647185c5af60a81cc5
+memory 512m
+limit_seconds 30
+runs 3
+rejected none
+run 1 elapsed 0.768
+run 1 before_pytest 1
+run 1 after_pytest 0
+run 1 fail_to_pass 1
+  tests/test_value.py::test_value
+run 1 pass_to_pass 1
+  tests/test_keep.py::test_truth
+run 1 still_failing 0
+run 1 regression 0
+run 1 skipped 0
+run 2 elapsed 0.635
+run 2 before_pytest 1
+run 2 after_pytest 0
+run 2 fail_to_pass 1
+  tests/test_value.py::test_value
+run 2 pass_to_pass 1
+  tests/test_keep.py::test_truth
+run 2 still_failing 0
+run 2 regression 0
+run 2 skipped 0
+run 3 elapsed 0.997
+run 3 before_pytest 1
+run 3 after_pytest 0
+run 3 fail_to_pass 1
+  tests/test_value.py::test_value
+run 3 pass_to_pass 1
+  tests/test_keep.py::test_truth
+run 3 still_failing 0
+run 3 regression 0
+run 3 skipped 0
+total_elapsed 2.401
+note This project was written to pass, so three matching runs are weak evidence about real flakes.
+```
+
+`.venv/bin/forge package counter`
+
+```
+repo local/counter
+commit c7c4e41913720631800d0f647185c5af60a81cc5
+rejected none
+packaged /Users/shubhambaviskar/taskforge-stage12-audit/output/sample/local-counter
+v6 assertion
+  tests/test_value.py::test_value assertion
+v7 clean
+v8 clean
+```
+
+Python on the host is 3.11.14 arm64.
+
+Bugs found and fixed:
+- The README said `forge split` writes a source patch and a test patch. The command prints names and the issue URL and writes nothing.
+- `python3.11 -m venv` cannot build an environment from this uv-managed interpreter, and `uv venv` without `--seed` has no pip. The README now says to use `uv venv --python 3.11 --seed .venv` in that case.
+
+Files changed:
+`README.md`.
+
+Decisions and open questions:
+The Colima daemon does not bind-mount this `/private/tmp` path, so the sandbox commands were repeated from a clone under the home directory. That is a property of the daemon's file sharing, not a change to a gate. The pre-existing uncommitted edit to `AGENTS.md` was left unstaged.
+
+Next stage:
+None. Stage 12 is the last stage in the spec.
