@@ -2444,3 +2444,63 @@ Decisions and open questions:
 
 Next stage:
 Improvement stage 6 was not started.
+
+## Improvement stage 6: failure text and hidden matches (commit 3a70cf406c5ffd14c9f823bc111da45d4a8c9e23)
+
+What was built:
+Before this change, `exact_error_messages` searched the test patch with a regular expression whose dot does not cross a newline. A triple-quoted `pytest.raises` match that spans lines was ignored, and V8 reported clean. `failure_excerpt` kept only lines that contain the test id, so an `AssertionError` on the following line was classified as `other`.
+
+Each new test file in the test patch is now parsed with `ast`. A `pytest.raises` match is read when it is a string constant, including a triple-quoted string and adjacent string constants. A match that is not a constant is `hidden_requirement` with the text `nonliteral match`, and the report is not clean. A decorator on the test does not hide a constant match. `assert value() == 1` remains a return-value check, not an error message. If the new file does not parse, the report is not clean and the reason is `unparsed test`.
+
+`failure_excerpt` includes the line that contains the test id and the following lines through the end of that failure. An `AssertionError` on the next line is `assertion`. An `ImportError` or `AttributeError` still wins over `assertion`. `_names_signature` still looks at the instruction text and does not parse it as Python. `myvalue(` does not satisfy a missing name `value`. `value(` does. V7 stays whole-line equality. A sentence that only contains a solution line is not a leak.
+
+`docs/DESIGN.md` states what V6, V7, and V8 each take as input. V6 does not prove the test is the one the issue asked for. V7 does not prove the instruction has no paraphrase of the solution. V8 does not prove the instruction states every requirement.
+
+No filter, evaluation label, or the 30 second limit changed. `forge package-pull` was not run on `pallets/click` 3858. No upstream repository code was run on the host.
+
+Commands run and their real output:
+
+`.venv/bin/ruff check forge tests && .venv/bin/mypy && .venv/bin/pytest`
+
+```
+All checks passed!
+Success: no issues found in 38 source files
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/shubhambaviskar/Desktop/TaskForge
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 177 items
+
+tests/test_allowlist.py ....                                             [  2%]
+tests/test_check.py ..............                                       [ 10%]
+tests/test_ci.py .                                                       [ 10%]
+tests/test_cli.py .........                                              [ 15%]
+tests/test_config.py ......                                              [ 19%]
+tests/test_filters.py ..................................                 [ 38%]
+tests/test_funnel.py ..........                                          [ 44%]
+tests/test_gates.py .............                                        [ 51%]
+tests/test_git_hygiene.py ....                                           [ 53%]
+tests/test_github.py .....................                               [ 65%]
+tests/test_outcomes.py .......                                           [ 69%]
+tests/test_package_pull.py ......                                        [ 72%]
+tests/test_quality.py .....................                              [ 84%]
+tests/test_report.py ...                                                 [ 86%]
+tests/test_sandbox.py ............                                       [ 93%]
+tests/test_split.py ............                                         [100%]
+
+============================= 177 passed in 2.54s ==============================
+```
+
+Bugs found and fixed:
+A multi-line match never reached V8, and the failure classifier never saw an error that was not on the test-id line. `myvalue(` was already rejected by the instruction-text check. That check was left as a text search.
+
+Files changed:
+`forge/quality.py`, `tests/test_quality.py`, `docs/DESIGN.md`.
+
+Decisions and open questions:
+Only a new Python file in the test patch is parsed. A patch that is not a diff is parsed as one file, which is how the unit fixtures are written. A modified test file that is not new is not parsed. `AGENTS.md` stayed unstaged.
+
+Next stage:
+Improvement stage 7 was not started.
