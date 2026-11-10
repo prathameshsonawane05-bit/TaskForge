@@ -4807,3 +4807,71 @@ Difficulty remains an estimate. One command that produced no edit does not valid
 
 Next stage:
 No further follow-up was started.
+
+## Agent validation: login check before a coding prompt
+
+What was built:
+The corrected validation checks login before any coding prompt. `claude auth status --text` is the status command shown by `claude auth --help`. It was saved to `data/followup4/auth-status.txt`. The output contains no token. The command exited 1:
+
+```
+Not logged in. Run claude auth login to authenticate.
+```
+
+The status is not logged in, so the validation stopped. `/login` was not run. `claude -p` was not run. No worktree was created. No empty diff was graded. One test is not validation of the whole task, and no test was run for this attempt.
+
+No filter, label, gate, `GATE_RUNTIME_LIMIT_SECONDS`, `DEFAULT_TIMEOUT_SECONDS`, or `output/pallets-click-3781/solution/solution.patch` was changed. The Follow-up 3 report was not edited. The sentence that says the earlier command was not logged in was not edited.
+
+Commands run and their real output:
+
+`/Users/shubhambaviskar/.local/bin/claude auth status --text` (exit 1)
+
+```
+Not logged in. Run claude auth login to authenticate.
+```
+
+`.venv/bin/ruff check forge tests && .venv/bin/mypy && .venv/bin/pytest` (exit 0)
+
+```
+All checks passed!
+Success: no issues found in 40 source files
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/shubhambaviskar/Desktop/TaskForge
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 202 items
+
+tests/test_allowlist.py ....                                             [  1%]
+tests/test_check.py ..............                                       [  8%]
+tests/test_ci.py .                                                       [  9%]
+tests/test_cli.py .........                                              [ 13%]
+tests/test_config.py ......                                              [ 16%]
+tests/test_filters.py .............................................      [ 39%]
+tests/test_funnel.py ..........                                          [ 44%]
+tests/test_gates.py .............                                        [ 50%]
+tests/test_git_hygiene.py .....                                          [ 52%]
+tests/test_github.py .....................                               [ 63%]
+tests/test_outcomes.py ........                                          [ 67%]
+tests/test_package_pull.py ......                                        [ 70%]
+tests/test_publish.py ...........                                        [ 75%]
+tests/test_quality.py .....................                              [ 86%]
+tests/test_report.py ...                                                 [ 87%]
+tests/test_sandbox.py ............                                       [ 93%]
+tests/test_split.py ............                                         [ 99%]
+tests/test_wheel.py .                                                    [100%]
+
+============================= 202 passed in 3.37s ==============================
+```
+
+Bugs found and fixed:
+None. The login check failed, and the run stopped before an agent prompt.
+
+Files changed:
+None. `data/followup4/auth-status.txt` is gitignored.
+
+Decisions and open questions:
+A coding prompt requires a logged-in status. This check did not have one. `AGENTS.md` stayed unstaged.
+
+Next stage:
+No further agent validation was started.
