@@ -167,7 +167,7 @@ This is not an independent evaluation. I wrote the pipeline, and the rubric in t
 
 ## encode/httpx
 
-Chosen now, before this funnel: `encode/httpx`, 40 closed pull requests, ordered by created time descending. The labeled windows already in this file are `psf/requests`, `pallets/itsdangerous`, and `pallets/click`. This repository had no label table. The rubric above was not changed. `forge/filters.py` was not opened while these labels were written. These labels were written before the funnel. The funnel reason column is blank.
+Chosen now, before this funnel: `encode/httpx`, 40 closed pull requests, ordered by created time descending. The labeled windows already in this file are `psf/requests`, `pallets/itsdangerous`, and `pallets/click`. This repository had no label table. The rubric above was not changed. `forge/filters.py` was not opened while these labels were written. These labels were written before the funnel. The funnel reason column was filled afterwards.
 
 The window contains 13 merged pull requests. That count is under 20, so no further page was fetched. Every merged pull request is labeled. An unmerged pull request is not a candidate. The closed-list payload did not include `changed_files`, `additions`, or `deletions`. Each count below is the file list. I stop at the first rubric clause that fails.
 

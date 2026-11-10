@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "taskforge"
 version = "0.1.0"
-description = "Check allowlisted public repositories and confirm permissive SPDX licenses."
+description = "Filter a merged pull request from an allowlisted repository, try it in Docker, and publish a task when the gates and quality checks accept."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

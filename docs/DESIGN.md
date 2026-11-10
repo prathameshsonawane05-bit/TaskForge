@@ -71,7 +71,7 @@ Both repeat the funnel fields: `repo`, `limit`, `order created desc`, `considere
 - Public repositories may already be in model training data.
 - This is not a security audit.
 - Difficulty is only an estimate. Tasks are not validated against real agents.
-- The labeled evaluation and the held-out window were written by the same author as the filters. The funnel accepted none in either window, so precision is undefined and recall is undefined. Agreement on those rejects is not evidence that an accept would be right.
-- The click window was also written by that author. Precision was 4/4 and recall was 4/4. That agreement is not an independent evaluation.
-- The one upstream package is pull request 3858 of `pallets/click`. Nine tests still failed, twenty were skipped, and V6 recorded `other`. It is not committed.
+- Three windows accepted none, so precision and recall are undefined: `psf/requests`, `pallets/itsdangerous`, and `encode/httpx`.
+- The click window was 4/4 and was labeled by the filter author.
+- The three written packages, `pallets/click` 3858, 3781, and 3769, are not committed. 3739 was not packaged because V7 leaked one solution line. Nine tests still failed and twenty were skipped on the packaged click pulls. V6 recorded `other`. No agent was run.
 - The only committed task is `output/sample/local-counter`. It has no upstream repository, and it was written to pass the gates.
