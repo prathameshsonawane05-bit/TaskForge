@@ -2504,3 +2504,203 @@ Only a new Python file in the test patch is parsed. A patch that is not a diff i
 
 Next stage:
 Improvement stage 7 was not started.
+
+## Improvement stage 7: file-list size and decision evidence (commit e0bc7296dc082e96d3d0cc5d0ec302ffad286b18)
+
+What was built:
+Before this change, `classify_pull` could accept a pull whose file list length was not `pull.changed_files`. `PullFilePayload` dropped the additions and deletions the files API sends, so a file sum that disagreed with the pull total was invisible. The funnel text gave only counts, so a binary or lockfile decision did not name the file that caused it.
+
+When the file list is present and its length is not `pull.changed_files`, the reason is `unknown_size`. That check is before `binary`, `lockfile`, `docs_only`, `missing_source_or_test`, and `no_linked_issue`. A shorter list is not accepted. A longer list is not accepted on the pull's smaller count. A file list longer than 5 is still `too_many_files` first.
+
+`PullFilePayload` keeps `additions` and `deletions` when they are present. If any listed file has one of those counts and another listed file lacks one, the reason is `unknown_size`. If every listed file has both and the sums differ from `pull.additions` and `pull.deletions`, the reason is `unknown_size`. If no listed file carries those fields, the pull totals are used. Fixtures that omit the fields still pass.
+
+`decision_evidence(pull, files)` describes the same reason `classify_pull` returns. For `binary`, `lockfile`, and `docs_only`, it names the first file that caused that reason. For `unknown_size` caused by a length or sum mismatch, it includes both numbers. For an accept, it includes the issue number from the first closing reference. The funnel text prints that line after the counts. No new `FilterReason` was added. The first-rejection order of the existing reasons was not changed.
+
+`tests/helpers.py` stays a test file. A `.txt` file stays documentation, including a requirements file. The lockfile basename list stays. `Since #13714` stays unlinked. A keyword and a number in different sentences stay unlinked. The tables in `docs/EVALUATION.md` were not edited. No labeled window gained an accept. `pallets/click` was not run, because the CLI cannot skip the first 30. No upstream repository code was run on the host. The token was not printed.
+
+Commands run and their real output:
+
+`.venv/bin/ruff check forge tests && .venv/bin/mypy forge tests && .venv/bin/pytest`
+
+```
+All checks passed!
+Success: no issues found in 38 source files
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/shubhambaviskar/Desktop/TaskForge
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 188 items
+
+tests/test_allowlist.py ....                                             [  2%]
+tests/test_check.py ..............                                       [  9%]
+tests/test_ci.py .                                                       [ 10%]
+tests/test_cli.py .........                                              [ 14%]
+tests/test_config.py ......                                              [ 18%]
+tests/test_filters.py .............................................      [ 42%]
+tests/test_funnel.py ..........                                          [ 47%]
+tests/test_gates.py .............                                        [ 54%]
+tests/test_git_hygiene.py ....                                           [ 56%]
+tests/test_github.py .....................                               [ 67%]
+tests/test_outcomes.py .......                                           [ 71%]
+tests/test_package_pull.py ......                                        [ 74%]
+tests/test_quality.py .....................                              [ 85%]
+tests/test_report.py ...                                                 [ 87%]
+tests/test_sandbox.py ............                                       [ 93%]
+tests/test_split.py ............                                         [100%]
+
+============================= 188 passed in 2.71s ==============================
+```
+
+Recorded `psf/requests` limit 50: considered 50, not_merged 31, revert 0, too_many_files 1, too_many_lines 0, unknown_size 0, binary 0, lockfile 0, docs_only 1, missing_source_or_test 17, no_linked_issue 0, accepted 0, older_prs_cut_off yes.
+
+`.venv/bin/forge funnel psf/requests --limit 50` (exit 0). The cache answered.
+
+```
+repo psf/requests
+limit 50
+order created desc
+considered 50
+not_merged 31
+revert 0
+too_many_files 1
+too_many_lines 0
+unknown_size 0
+binary 0
+lockfile 0
+docs_only 1
+missing_source_or_test 17
+no_linked_issue 0
+accepted 0
+older_prs_cut_off yes
+missing_source_or_test
+missing_source_or_test
+missing_source_or_test
+missing_source_or_test
+missing_source_or_test
+missing_source_or_test
+missing_source_or_test
+missing_source_or_test
+missing_source_or_test
+missing_source_or_test
+missing_source_or_test
+missing_source_or_test
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+docs_only .github/CONTRIBUTING.md
+not_merged
+not_merged
+not_merged
+not_merged
+missing_source_or_test
+missing_source_or_test
+not_merged
+not_merged
+not_merged
+not_merged
+missing_source_or_test
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+too_many_files 6
+missing_source_or_test
+not_merged
+not_merged
+missing_source_or_test
+not_merged
+not_merged
+not_merged
+```
+
+Accepted stayed 0. Every reason count matches the recorded window.
+
+Recorded `pallets/itsdangerous` limit 40: considered 40, not_merged 26, revert 0, too_many_files 3, too_many_lines 0, unknown_size 0, binary 0, lockfile 0, docs_only 3, missing_source_or_test 8, no_linked_issue 0, accepted 0, older_prs_cut_off yes.
+
+`.venv/bin/forge funnel pallets/itsdangerous --limit 40` (exit 0). The cache answered.
+
+```
+repo pallets/itsdangerous
+limit 40
+order created desc
+considered 40
+not_merged 26
+revert 0
+too_many_files 3
+too_many_lines 0
+unknown_size 0
+binary 0
+lockfile 0
+docs_only 3
+missing_source_or_test 8
+no_linked_issue 0
+accepted 0
+older_prs_cut_off yes
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+missing_source_or_test
+too_many_files 8
+missing_source_or_test
+too_many_files 6
+too_many_files 22
+docs_only CONTRIBUTING.rst
+not_merged
+not_merged
+missing_source_or_test
+missing_source_or_test
+not_merged
+missing_source_or_test
+missing_source_or_test
+docs_only requirements/dev.txt
+missing_source_or_test
+missing_source_or_test
+docs_only requirements/dev.txt
+```
+
+Accepted stayed 0. Every reason count matches the recorded window. `requirements/dev.txt` is still `docs_only`.
+
+Bugs found and fixed:
+A passing pull whose file list was shorter or longer than `changed_files` was accepted. A per-file sum that disagreed with the pull totals could not be seen. The funnel named a binary or lockfile decision only by its count.
+
+Files changed:
+`forge/filters.py`, `forge/models.py`, `forge/funnel.py`, `forge/report.py`, `tests/test_filters.py`, `tests/test_funnel.py`, `docs/DESIGN.md`.
+
+Decisions and open questions:
+The file-list cap of 5 still rejects before the new length check, so a list of six files stays `too_many_files`. Neither cached window moved a pull into `unknown_size` or into `accepted`. `AGENTS.md` stayed unstaged.
+
+Next stage:
+Improvement stage 8 was not started.
