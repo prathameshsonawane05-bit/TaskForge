@@ -2218,3 +2218,59 @@ None of those were fixed in this stage. `AGENTS.md` stayed unstaged.
 
 Next stage:
 Improvement stage 2 was not started.
+
+## Improvement stage 2: closed-pull list order (commit 429645e48bdaeddbe458f65b2aa2793399565015)
+
+What was built:
+Before the request changed, `closed_pulls_url` omitted `sort` and `direction`. `docs/EVALUATION.md` called the `psf/requests` window the 50 most recently closed pull requests. The GitHub list-pulls sort values are `created`, `updated`, `popularity`, and `long-running`. The documented default is `created`, descending. `closed_at` is not a sort value. The recorded windows came from that request, so that order is kept.
+
+Every closed-pull list request now sends `sort=created` and `direction=desc`. Each pull stays in the order the list response returns it. The next page is the `Link` `rel=next` URL. The list is not sorted by `closed_at`, `updated_at`, or number. `created_at` and `closed_at` stay on the pull payload when GitHub sends them. The funnel text and the JSON report gain one line, `order created desc`. They do not gain a timestamp for every pull request. No filter, label, rubric row, or gate was changed.
+
+The `psf/requests` sentence now says the closed list is ordered by created time, descending. The pull numbers, labels, and reasons in that file are unchanged.
+
+Commands run and their real output:
+
+`.venv/bin/ruff check forge tests && .venv/bin/mypy && .venv/bin/pytest`
+
+```
+All checks passed!
+Success: no issues found in 38 source files
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/shubhambaviskar/Desktop/TaskForge
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 158 items
+
+tests/test_allowlist.py ....                                             [  2%]
+tests/test_check.py ..............                                       [ 11%]
+tests/test_ci.py .                                                       [ 12%]
+tests/test_cli.py .........                                              [ 17%]
+tests/test_config.py ......                                              [ 21%]
+tests/test_filters.py ..................................                 [ 43%]
+tests/test_funnel.py ..........                                          [ 49%]
+tests/test_gates.py .............                                        [ 57%]
+tests/test_git_hygiene.py ....                                           [ 60%]
+tests/test_github.py .....................                               [ 73%]
+tests/test_outcomes.py ......                                            [ 77%]
+tests/test_package_pull.py ...                                           [ 79%]
+tests/test_quality.py ............                                       [ 86%]
+tests/test_report.py ...                                                 [ 88%]
+tests/test_sandbox.py ..........                                         [ 94%]
+tests/test_split.py ........                                             [100%]
+
+============================= 158 passed in 1.90s ==============================
+```
+
+Bugs found and fixed:
+None in the filters or gates. The list request did not name its sort. It now names the documented default, `created` descending, which is the order the recorded windows already used.
+
+Files changed:
+`forge/funnel.py`, `forge/models.py`, `forge/report.py`, `tests/test_funnel.py`, `tests/test_report.py`, `docs/EVALUATION.md`, `docs/DESIGN.md`.
+
+Decisions and open questions:
+A later page is whatever URL the `Link` header names. The tests use a fixed HTTP fixture and do not call live GitHub. `AGENTS.md` stayed unstaged.
+
+Next stage:
+Improvement stage 3 was not started.
