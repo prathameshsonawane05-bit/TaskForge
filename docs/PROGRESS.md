@@ -2274,3 +2274,59 @@ A later page is whatever URL the `Link` header names. The tests use a fixed HTTP
 
 Next stage:
 Improvement stage 3 was not started.
+
+## Improvement stage 3: patch classification (commit bbfd35d2ab46c9d53115c1141bec035191586bcd)
+
+What was built:
+Before this change, `partition_files` put a file that was neither Python source nor a Python test into `other`. `render_patch` was called for the source list and the test list. The other list was named and then dropped. `package-pull` wrote those two patches.
+
+Every changed file is now source, hidden test, supporting, or unsupported. A Python test file is a hidden test and goes only in the test patch. Any other Python file is source and goes only in the solution patch. A text file that is not a test, including `pyproject.toml`, `setup.cfg`, and a Markdown file that rides along with source, is supporting and goes in the solution patch. A file with no patch, a binary file, or a lockfile is unsupported. `package-pull` then writes nothing and exits 1 with reason `unsupported_file`. That reason was not added to the funnel. No filter threshold and no evaluation label changed. A test file is not in the solution patch. A source or supporting file is not in the test patch. `git apply --check` leaves the base checkout unchanged.
+
+`forge package-pull` was not run on `pallets/click` 3858. The package already under `output/pallets-click-3858/` was written when `CHANGES.md` was dropped as other, so that file is not in its solution patch.
+
+Commands run and their real output:
+
+`.venv/bin/ruff check forge tests && .venv/bin/mypy && .venv/bin/pytest`
+
+```
+All checks passed!
+Success: no issues found in 38 source files
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/shubhambaviskar/Desktop/TaskForge
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 165 items
+
+tests/test_allowlist.py ....                                             [  2%]
+tests/test_check.py ..............                                       [ 10%]
+tests/test_ci.py .                                                       [ 11%]
+tests/test_cli.py .........                                              [ 16%]
+tests/test_config.py ......                                              [ 20%]
+tests/test_filters.py ..................................                 [ 41%]
+tests/test_funnel.py ..........                                          [ 47%]
+tests/test_gates.py .............                                        [ 55%]
+tests/test_git_hygiene.py ....                                           [ 57%]
+tests/test_github.py .....................                               [ 70%]
+tests/test_outcomes.py ......                                            [ 73%]
+tests/test_package_pull.py ......                                        [ 77%]
+tests/test_quality.py ............                                       [ 84%]
+tests/test_report.py ...                                                 [ 86%]
+tests/test_sandbox.py ..........                                         [ 92%]
+tests/test_split.py ............                                         [100%]
+
+============================= 165 passed in 2.00s ==============================
+```
+
+Bugs found and fixed:
+The split tests still expected a Markdown file to be named `other` and left out of both patches. They now expect that file in the solution patch only. Calling `render_file_diff` on a missing patch still raises `github_error`. The package path classifies that file as unsupported and does not render it.
+
+Files changed:
+`forge/split.py`, `forge/package.py`, `tests/test_split.py`, `tests/test_package_pull.py`, `README.md`, `docs/DESIGN.md`.
+
+Decisions and open questions:
+The funnel still rejects a binary file as `binary` and a lockfile as `lockfile`. `package-pull` prints `unsupported_file` for those two and for a missing patch, and it does not write `output/` or `data/packages/`. Fixture tests cover a `pyproject.toml` change, a renamed source file, a deleted test file, and a file with no patch. No upstream repository code was run. `AGENTS.md` stayed unstaged.
+
+Next stage:
+Improvement stage 4 was not started.
