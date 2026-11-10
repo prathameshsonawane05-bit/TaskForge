@@ -2761,3 +2761,67 @@ A diff header is a line that starts with `diff --git `. After a failed publish r
 
 Next stage:
 Improvement stage 9 was not started.
+
+## Improvement stage 9: lock the checks and the base image (commit c46a5ec1f67ece9170d4b1d36c1cb8b96e739a2e)
+
+What was built:
+Before this change, `pyproject.toml` gave lower bounds only. `.github/workflows/ci.yml` installed `.[dev]` with pip, so a later release of httpx, pydantic, typer, ruff, mypy, or pytest could change the checks. `BASE_IMAGE` was the tag `python:3.11-slim`.
+
+`uv lock` wrote `uv.lock`. `uv export --extra dev --no-emit-project --frozen --output-file requirements-dev.txt` wrote the locked development set. CI installs that file and then installs this project with `--no-deps`. It does not install the floating `.[dev]` bounds. The README says a refresh is `uv lock --upgrade` followed by that export, and that a refresh is its own commit. Pins were not edited by hand. The compiled packages installed on this arm64 machine from arm64 wheels, including mypy, ruff, pydantic-core, librt, and ast-serialize. setuptools is a `py3-none-any` wheel. No dependency lacked an arm64 build. `--platform linux/amd64` was not passed.
+
+`docker buildx imagetools inspect python:3.11-slim` printed the multi-arch index digest `sha256:07d4824036af339fa1b6ef769cc99d9c10a141769538b52b3b597c84f7a7b535`. The media type was `application/vnd.oci.image.index.v1+json`. The manifests include `linux/arm64/v8` and `linux/amd64`. `BASE_IMAGE` is `python:3.11-slim@sha256:07d4824036af339fa1b6ef769cc99d9c10a141769538b52b3b597c84f7a7b535`. The sandbox test requires that same `FROM` line, so removing the digest fails the test.
+
+CI runs Python 3.11 and Python 3.12. Both jobs run `ruff check forge tests`, `mypy`, and `pytest`. The workflow test still requires those three commands and still rejects a token. A built wheel contains `forge/allowlist.yaml`. The loader still reads that file from the repository path. The pytest suite does not start the Docker daemon. No current test gained a skip marker. CI has no Docker job.
+
+No filter, evaluation label, 30 second limit, or publish sequence changed. `forge package-pull` was not called. No upstream repository code was run on the host. The token was not printed.
+
+Commands run and their real output:
+
+The proof environment is `/tmp/taskforge-stage9`, created with `uv venv --python 3.12 --seed /tmp/taskforge-stage9`. It is not `.venv`. After `python -m pip install -r requirements-dev.txt` and `python -m pip install --no-deps -e .`:
+
+`/tmp/taskforge-stage9/bin/ruff check forge tests && /tmp/taskforge-stage9/bin/mypy && /tmp/taskforge-stage9/bin/pytest`
+
+```
+All checks passed!
+Success: no issues found in 40 source files
+============================= test session starts ==============================
+platform darwin -- Python 3.12.12, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/shubhambaviskar/Desktop/TaskForge
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 200 items
+
+tests/test_allowlist.py ....                                             [  2%]
+tests/test_check.py ..............                                       [  9%]
+tests/test_ci.py .                                                       [  9%]
+tests/test_cli.py .........                                              [ 14%]
+tests/test_config.py ......                                              [ 17%]
+tests/test_filters.py .............................................      [ 39%]
+tests/test_funnel.py ..........                                          [ 44%]
+tests/test_gates.py .............                                        [ 51%]
+tests/test_git_hygiene.py ....                                           [ 53%]
+tests/test_github.py .....................                               [ 63%]
+tests/test_outcomes.py .......                                           [ 67%]
+tests/test_package_pull.py ......                                        [ 70%]
+tests/test_publish.py ...........                                        [ 75%]
+tests/test_quality.py .....................                              [ 86%]
+tests/test_report.py ...                                                 [ 87%]
+tests/test_sandbox.py ............                                       [ 93%]
+tests/test_split.py ............                                         [ 99%]
+tests/test_wheel.py .                                                    [100%]
+
+============================= 200 passed in 3.84s ==============================
+```
+
+Bugs found and fixed:
+The wheel build in a fresh environment could not import `setuptools.build_meta`. `setuptools>=68` was added to the dev extra and `uv lock` pinned setuptools 84.2.1. That pin was not typed by hand.
+
+Files changed:
+`pyproject.toml`, `uv.lock`, `requirements-dev.txt`, `.github/workflows/ci.yml`, `README.md`, `forge/sandbox.py`, `tests/test_sandbox.py`, `tests/test_ci.py`, `tests/test_wheel.py`, `docs/DESIGN.md`, `.gitignore`.
+
+Decisions and open questions:
+The locked set is installed before `pip install --no-deps -e .`, so the project install does not resolve the lower bounds. A later lock refresh stays its own commit. `AGENTS.md` stayed unstaged.
+
+Next stage:
+Improvement stage 10 was not started.
