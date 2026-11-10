@@ -29,7 +29,7 @@ A closed pull request is rejected for the first reason below. `considered` later
 - a timeout, 60 seconds unless a command passes `--timeout`. On timeout the container is removed and the process exits 2.
 - one read-only mount, the patch file at `/patch` (a patch directory is mounted at `/patches`)
 
-The host checkout, `.env`, and the Docker socket are not mounted. The GitHub token is not passed to git or Docker. The image is `python:3.11-slim` for the host architecture. The command does not pass `--platform`.
+The host checkout, `.env`, and the Docker socket are not mounted. The GitHub token is not passed to git or Docker. The image is `python:3.11-slim` for the host architecture. The command does not pass `--platform`. The eval image installs git and pytest while it is built. When the checkout has `pyproject.toml` or `setup.py`, that build runs `pip install .` after the files are copied and does not name any further package. A checkout without those files, including the widget and counter fixtures, keeps the git and pytest image. The build may use the network. The run stays offline.
 
 ## Gates V1 through V8
 

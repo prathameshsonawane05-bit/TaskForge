@@ -12,6 +12,7 @@ from forge.outcomes import (
 from forge.sandbox import (
     DEFAULT_TIMEOUT_SECONDS,
     CommandResult,
+    build_eval_image,
     dockerfile_text,
     eval_dockerfile_text,
 )
@@ -209,3 +210,91 @@ def test_trial_mounts_only_the_patch_directory(tmp_path: Path) -> None:
         assert TOKEN not in " ".join(args)
         assert "GITHUB_TOKEN" not in env
         assert all(TOKEN not in value for value in env.values())
+    assert "pip install --no-cache-dir ." not in written
+
+
+def test_packaged_checkout_is_installed_after_copy(tmp_path: Path) -> None:
+    write_project(tmp_path, f"GITHUB_TOKEN={TOKEN}\n", ["acme/demo"])
+    bare = tmp_path / "bare"
+    bare.mkdir()
+    packaged = tmp_path / "packaged"
+    packaged.mkdir()
+    (packaged / "pyproject.toml").write_text(
+        "[project]\nname = 'demo'\nversion = '0.1.0'\n",
+        encoding="utf-8",
+    )
+    setup_only = tmp_path / "setup-only"
+    setup_only.mkdir()
+    (setup_only / "setup.py").write_text(
+        "from setuptools import setup\nsetup()\n",
+        encoding="utf-8",
+    )
+    config_only = tmp_path / "config-only"
+    config_only.mkdir()
+    (config_only / "setup.cfg").write_text("[metadata]\nname = demo\n", encoding="utf-8")
+    sha = "a" * 40
+    recorder = Recorder()
+    env = {"PATH": "/usr/bin", "HOME": "/tmp", "GITHUB_TOKEN": TOKEN}
+
+    bare_tag = build_eval_image(
+        "acme",
+        "demo",
+        sha,
+        bare,
+        root=tmp_path,
+        executor=recorder,
+        base_env=env,
+        host_platform="linux/arm64",
+    )
+    bare_text = (tmp_path / "data" / "sandbox" / "eval.Dockerfile").read_text(encoding="utf-8")
+    assert bare_tag == f"taskforge/acme/demo:{sha}"
+    assert bare_text == eval_dockerfile_text()
+    assert "pip install --no-cache-dir ." not in bare_text
+
+    build_eval_image(
+        "acme",
+        "demo",
+        sha,
+        packaged,
+        root=tmp_path,
+        executor=recorder,
+        base_env=env,
+        host_platform="linux/arm64",
+    )
+    packaged_text = (tmp_path / "data" / "sandbox" / "eval.Dockerfile").read_text(encoding="utf-8")
+    copy_at = packaged_text.index("COPY . /repo")
+    install_at = packaged_text.index("RUN pip install --no-cache-dir .")
+    assert install_at > copy_at
+    assert packaged_text.endswith("RUN pip install --no-cache-dir .\n")
+    assert "pip install click" not in packaged_text
+    assert "pip install pytest" not in packaged_text
+
+    build_eval_image(
+        "acme",
+        "demo",
+        sha,
+        setup_only,
+        root=tmp_path,
+        executor=recorder,
+        base_env=env,
+        host_platform="linux/arm64",
+    )
+    setup_text = (tmp_path / "data" / "sandbox" / "eval.Dockerfile").read_text(encoding="utf-8")
+    assert setup_text.endswith("RUN pip install --no-cache-dir .\n")
+
+    build_eval_image(
+        "acme",
+        "demo",
+        sha,
+        config_only,
+        root=tmp_path,
+        executor=recorder,
+        base_env=env,
+        host_platform="linux/arm64",
+    )
+    config_text = (tmp_path / "data" / "sandbox" / "eval.Dockerfile").read_text(encoding="utf-8")
+    assert config_text == eval_dockerfile_text()
+    for args, _env, _timeout in recorder.calls:
+        if args[1] == "build":
+            assert "--network" not in args
+            assert "--platform" not in args

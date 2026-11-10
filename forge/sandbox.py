@@ -93,9 +93,14 @@ def dockerfile_text() -> str:
     return f"FROM {BASE_IMAGE}\nWORKDIR /repo\nCOPY . /repo\n"
 
 
-def eval_dockerfile_text() -> str:
-    """Install git and pytest at build time. The run itself stays offline."""
-    return (
+def eval_dockerfile_text(*, install_checkout: bool = False) -> str:
+    """Install git and pytest at build time. The run itself stays offline.
+
+    When ``install_checkout`` is true, ``pip install .`` runs after the copy.
+    That command installs the checkout and the dependencies its packaging
+    file declares. It does not name any other package.
+    """
+    text = (
         f"FROM {BASE_IMAGE}\n"
         "RUN apt-get update \\\n"
         " && apt-get install -y --no-install-recommends git \\\n"
@@ -104,6 +109,14 @@ def eval_dockerfile_text() -> str:
         "WORKDIR /repo\n"
         "COPY . /repo\n"
     )
+    if install_checkout:
+        text += "RUN pip install --no-cache-dir .\n"
+    return text
+
+
+def checkout_has_packaging(checkout: Path) -> bool:
+    """True when the checkout declares a package with pyproject.toml or setup.py."""
+    return (checkout / "pyproject.toml").is_file() or (checkout / "setup.py").is_file()
 
 
 def container_run_args(
@@ -266,7 +279,12 @@ def build_eval_image(
     base_env: Mapping[str, str] | None = None,
     host_platform: str | None = None,
 ) -> str:
-    """Build an image that contains git and pytest. The build may use the network."""
+    """Build the eval image. The build may use the network. The run stays offline.
+
+    A checkout with ``pyproject.toml`` or ``setup.py`` is installed with
+    ``pip install .`` after the files are copied. A checkout without that
+    metadata keeps the git and pytest image.
+    """
     digest = _require_sha(sha)
     env = _prepared_env(root, base_env)
     run = executor if executor is not None else default_executor
@@ -281,7 +299,7 @@ def build_eval_image(
         root,
         run,
         env,
-        text=eval_dockerfile_text(),
+        text=eval_dockerfile_text(install_checkout=checkout_has_packaging(checkout)),
         filename="eval.Dockerfile",
     )
     return tag

@@ -61,7 +61,7 @@ pytest
 
 ## Docker
 
-`forge sandbox`, `forge outcomes`, `forge gates`, and `forge package` need Docker. The Docker daemon must be able to mount the clone, and this Colima does not mount `/tmp`. Repository code runs only inside that sandbox. The container has no network, 512 MB of memory, one CPU, a timeout, and a read-only patch mount. The host does not run the repository's tests or setup.
+`forge sandbox`, `forge outcomes`, `forge gates`, and `forge package` need Docker. The Docker daemon must be able to mount the clone, and this Colima does not mount `/tmp`. Repository code runs only inside that sandbox. The container has no network, 512 MB of memory, one CPU, a timeout, and a read-only patch mount. The host does not run the repository's tests or setup. The eval image build may use the network. A checkout with `pyproject.toml` or `setup.py` is installed with `pip install .` after the files are copied. The widget and counter fixtures have no packaging metadata and keep the git and pytest image.
 
 ## Limitations
 
