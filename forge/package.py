@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import json
 import shutil
+import tempfile
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
@@ -106,23 +107,16 @@ def package_fixture(
         return PackageResult(report=report, quality=quality, directory=None)
     task_id = report.full_name.replace("/", "-")
     directory = root / "output" / "sample" / task_id
-    if directory.exists():
-        shutil.rmtree(directory)
-    (directory / "solution").mkdir(parents=True)
-    (directory / "tests").mkdir()
-    (directory / "instruction.md").write_text(instruction, encoding="utf-8")
-    (directory / "solution" / "solution.patch").write_text(solution_patch, encoding="utf-8")
-    (directory / "tests" / "test.patch").write_text(test_patch, encoding="utf-8")
     pass_to_pass = report.runs[0].classification.pass_to_pass
-    (directory / "tests" / "config.json").write_text(
-        _json({"f2p": list(fail_to_pass), "p2p": list(pass_to_pass)}),
-        encoding="utf-8",
+    _publish_package(
+        directory,
+        instruction=instruction,
+        solution_patch=solution_patch,
+        test_patch=test_patch,
+        config_json=_json({"f2p": list(fail_to_pass), "p2p": list(pass_to_pass)}),
+        task_json=_json(_task(task_id, report)),
+        attribution=_attribution(report),
     )
-    (directory / "task.json").write_text(
-        _json(_task(task_id, report)),
-        encoding="utf-8",
-    )
-    (directory / "ATTRIBUTION.md").write_text(_attribution(report), encoding="utf-8")
     return PackageResult(report=report, quality=quality, directory=directory)
 
 
@@ -468,6 +462,133 @@ def _merge_parent(
     return parent, merge, head
 
 
+_PACKAGE_FILES = (
+    "instruction.md",
+    "solution/solution.patch",
+    "tests/test.patch",
+    "tests/config.json",
+    "task.json",
+    "ATTRIBUTION.md",
+)
+_PATCH_FILES = ("solution.patch", "test.patch")
+_PATCH_NAMES = frozenset(_PATCH_FILES)
+
+
+def _publish_package(
+    directory: Path,
+    *,
+    instruction: str,
+    solution_patch: str,
+    test_patch: str,
+    config_json: str,
+    task_json: str,
+    attribution: str,
+) -> Path:
+    def write(staging: Path) -> None:
+        (staging / "solution").mkdir(parents=True)
+        (staging / "tests").mkdir()
+        (staging / "instruction.md").write_text(instruction, encoding="utf-8")
+        (staging / "solution" / "solution.patch").write_text(solution_patch, encoding="utf-8")
+        (staging / "tests" / "test.patch").write_text(test_patch, encoding="utf-8")
+        (staging / "tests" / "config.json").write_text(config_json, encoding="utf-8")
+        (staging / "task.json").write_text(task_json, encoding="utf-8")
+        (staging / "ATTRIBUTION.md").write_text(attribution, encoding="utf-8")
+
+    return _publish_tree(directory, _PACKAGE_FILES, write)
+
+
+def _publish_tree(
+    destination: Path,
+    required: tuple[str, ...],
+    write: Callable[[Path], None],
+) -> Path:
+    """Write a sibling tree and publish it only after validation."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{destination.name}.", dir=destination.parent))
+    try:
+        write(staging)
+        _validate_tree(staging, required)
+    except Exception:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+    _replace_directory(destination, staging, required)
+    return destination
+
+
+def _replace_directory(destination: Path, staging: Path, required: tuple[str, ...]) -> None:
+    aside: Path | None = None
+    try:
+        if destination.exists():
+            aside = _aside_for(destination)
+            destination.rename(aside)
+        try:
+            staging.rename(destination)
+        except Exception:
+            if aside is not None and aside.exists() and not destination.exists():
+                aside.rename(destination)
+            raise
+        try:
+            _validate_tree(destination, required)
+        except Exception:
+            _restore_aside(destination, aside)
+            raise
+        if aside is not None and aside.exists():
+            shutil.rmtree(aside)
+    except Exception:
+        if destination.exists() and staging.exists():
+            shutil.rmtree(staging, ignore_errors=True)
+        raise
+
+
+def _restore_aside(destination: Path, aside: Path | None) -> None:
+    """Put the previous directory back when the published tree is not valid."""
+    if aside is None or not aside.exists() or not destination.exists():
+        return
+    held = _aside_for(destination)
+    destination.rename(held)
+    try:
+        aside.rename(destination)
+    except Exception:
+        held.rename(destination)
+        raise
+    shutil.rmtree(held)
+
+
+def _aside_for(destination: Path) -> Path:
+    candidate = destination.with_name(f".{destination.name}.aside")
+    index = 2
+    while candidate.exists():
+        candidate = destination.with_name(f".{destination.name}.aside-{index}")
+        index += 1
+    return candidate
+
+
+def _validate_tree(root: Path, required: tuple[str, ...]) -> None:
+    for relative in required:
+        path = root / relative
+        if not path.is_file():
+            raise ForgeError(
+                f"Package file {relative} is missing. The previous directory was left in place.",
+                reason=ReasonCode.INTERNAL,
+            )
+        text = path.read_text(encoding="utf-8")
+        if text.strip() == "":
+            label = "Patch" if path.name in _PATCH_NAMES else "Package file"
+            raise ForgeError(
+                f"{label} {relative} is empty. The previous directory was left in place.",
+                reason=ReasonCode.INTERNAL,
+            )
+        if path.name in _PATCH_NAMES and not _has_diff_header(text):
+            raise ForgeError(
+                f"Patch {relative} has no diff header. The previous directory was left in place.",
+                reason=ReasonCode.INTERNAL,
+            )
+
+
+def _has_diff_header(text: str) -> bool:
+    return any(line.startswith("diff --git ") for line in text.splitlines())
+
+
 def _write_patches(
     root: Path,
     owner: str,
@@ -476,10 +597,12 @@ def _write_patches(
     report: SplitReport,
 ) -> Path:
     patches = root / "data" / "packages" / owner / name / str(number) / "patches"
-    patches.mkdir(parents=True, exist_ok=True)
-    (patches / "solution.patch").write_text(report.source_patch, encoding="utf-8")
-    (patches / "test.patch").write_text(report.test_patch, encoding="utf-8")
-    return patches
+
+    def write(staging: Path) -> None:
+        (staging / "solution.patch").write_text(report.source_patch, encoding="utf-8")
+        (staging / "test.patch").write_text(report.test_patch, encoding="utf-8")
+
+    return _publish_tree(patches, _PATCH_FILES, write)
 
 
 def _write_pull_package(
@@ -501,34 +624,6 @@ def _write_pull_package(
 ) -> Path:
     task_id = f"{owner}-{name}-{number}"
     directory = root / "output" / task_id
-    if directory.exists():
-        shutil.rmtree(directory)
-    (directory / "solution").mkdir(parents=True)
-    (directory / "tests").mkdir()
-    (directory / "instruction.md").write_text(instruction, encoding="utf-8")
-    (directory / "solution" / "solution.patch").write_text(source_patch, encoding="utf-8")
-    (directory / "tests" / "test.patch").write_text(test_patch, encoding="utf-8")
-    (directory / "tests" / "config.json").write_text(
-        _json({"f2p": list(fail_to_pass), "p2p": list(pass_to_pass)}),
-        encoding="utf-8",
-    )
-    (directory / "task.json").write_text(
-        _json(
-            {
-                "task_id": task_id,
-                "repo": f"{owner}/{name}",
-                "license": spdx,
-                "pr_url": f"https://github.com/{owner}/{name}/pull/{number}",
-                "issue_url": issue_url,
-                "base_commit": base,
-                "difficulty_signals": _DIFFICULTY,
-                "f2p": list(fail_to_pass),
-                "p2p": list(pass_to_pass),
-                "tool_version": version("taskforge"),
-            }
-        ),
-        encoding="utf-8",
-    )
     shas = [f"- Base commit: {base}", f"- Merge commit: {merge}"]
     if head:
         shas.append(f"- Head commit: {head}")
@@ -541,8 +636,27 @@ def _write_pull_package(
         + "\n".join(shas)
         + f"\n\n{_DIFFICULTY}\n"
     )
-    (directory / "ATTRIBUTION.md").write_text(attribution, encoding="utf-8")
-    return directory
+    task: dict[str, object] = {
+        "task_id": task_id,
+        "repo": f"{owner}/{name}",
+        "license": spdx,
+        "pr_url": f"https://github.com/{owner}/{name}/pull/{number}",
+        "issue_url": issue_url,
+        "base_commit": base,
+        "difficulty_signals": _DIFFICULTY,
+        "f2p": list(fail_to_pass),
+        "p2p": list(pass_to_pass),
+        "tool_version": version("taskforge"),
+    }
+    return _publish_package(
+        directory,
+        instruction=instruction,
+        solution_patch=source_patch,
+        test_patch=test_patch,
+        config_json=_json({"f2p": list(fail_to_pass), "p2p": list(pass_to_pass)}),
+        task_json=_json(task),
+        attribution=attribution,
+    )
 
 
 def _empty_gate(full_name: str, sha: str, image: str, reason: GateReason) -> GateReport:
