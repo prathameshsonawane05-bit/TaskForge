@@ -14,6 +14,14 @@ python -m pip install -e ".[dev]"
 
 `source .venv/bin/activate` works in bash and zsh. After that, `forge`, `ruff`, `mypy`, and `pytest` are on `PATH`.
 
+If `python3.11 -m venv` fails because that interpreter is a uv-managed build and the new environment cannot find the standard library, create the environment with uv and install the same way:
+
+```bash
+uv venv --python 3.11 .venv
+source .venv/bin/activate
+python -m pip install -e ".[dev]"
+```
+
 ## Token
 
 Save the token with:
