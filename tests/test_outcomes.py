@@ -395,7 +395,10 @@ def test_static_names_are_installed_before_the_offline_line(tmp_path: Path) -> N
         host_platform="linux/arm64",
     )
     text = (tmp_path / "data" / "sandbox" / "eval.Dockerfile").read_text(encoding="utf-8")
-    prefetch = "RUN pip install --no-cache-dir setuptools packaging httpx"
+    prefetch = (
+        "RUN pip install --no-cache-dir "
+        "'setuptools>=68' 'packaging>=21' 'httpx[http2]>=0.27'"
+    )
     copy_at = text.index("COPY . /repo")
     assert text.index(prefetch) < copy_at
     assert copy_at < text.index(OFFLINE_EDITABLE_INSTALL)
@@ -430,6 +433,242 @@ def test_static_names_are_installed_before_the_offline_line(tmp_path: Path) -> N
     )
     assert builds_after == builds_before
     assert (tmp_path / "data" / "sandbox" / "eval.Dockerfile").read_text(encoding="utf-8") == text
+
+
+def _prefetch_line(tmp_path: Path, pyproject: str) -> str:
+    write_project(tmp_path, f"GITHUB_TOKEN={TOKEN}\n", ["acme/demo"])
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    (checkout / "pyproject.toml").write_text(pyproject, encoding="utf-8")
+    build_eval_image(
+        "acme",
+        "demo",
+        "c" * 40,
+        checkout,
+        root=tmp_path,
+        executor=Recorder(),
+        base_env={"PATH": "/usr/bin", "HOME": "/tmp", "GITHUB_TOKEN": TOKEN},
+        host_platform="linux/arm64",
+    )
+    text = (tmp_path / "data" / "sandbox" / "eval.Dockerfile").read_text(encoding="utf-8")
+    offline_line = text.splitlines()[-1]
+    assert offline_line == OFFLINE_EDITABLE_INSTALL
+    assert "flit_core" not in offline_line
+    assert "httpx" not in offline_line
+    assert "uvloop" not in offline_line
+    return next(line for line in text.splitlines() if "pip install --no-cache-dir '" in line)
+
+
+def _unquoted_semicolons(line: str) -> int:
+    quote: str | None = None
+    count = 0
+    index = 0
+    while index < len(line):
+        char = line[index]
+        if quote == "'":
+            if char == "'":
+                quote = None
+            index += 1
+            continue
+        if quote == '"':
+            if char == "\\" and index + 1 < len(line):
+                index += 2
+                continue
+            if char == '"':
+                quote = None
+            index += 1
+            continue
+        if char in {'"', "'"}:
+            quote = char
+        elif char == ";":
+            count += 1
+        index += 1
+    return count
+
+
+def test_version_bounds_stay_on_the_prefetch(tmp_path: Path) -> None:
+    line = _prefetch_line(
+        tmp_path,
+        "\n".join(
+            [
+                "[build-system]",
+                'requires = ["flit_core>=3.11,<4"]',
+                "",
+                "[project]",
+                'name = "demo"',
+                'version = "0.1.0"',
+                "dependencies = []",
+                "",
+            ]
+        ),
+    )
+    assert "flit_core>=3.11,<4" in line
+    assert ">=3.11" in line
+    assert "<4" in line
+
+
+def test_extras_and_version_stay_on_the_prefetch(tmp_path: Path) -> None:
+    line = _prefetch_line(
+        tmp_path,
+        "\n".join(
+            [
+                "[project]",
+                'name = "demo"',
+                'version = "0.1.0"',
+                'dependencies = ["httpx[http2]>=0.27"]',
+                "",
+            ]
+        ),
+    )
+    assert "httpx[http2]>=0.27" in line
+    assert "[http2]" in line
+    assert ">=0.27" in line
+
+
+def test_environment_marker_stays_inside_one_run(tmp_path: Path) -> None:
+    write_project(tmp_path, f"GITHUB_TOKEN={TOKEN}\n", ["acme/demo"])
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    (checkout / "pyproject.toml").write_text(
+        "\n".join(
+            [
+                "[project]",
+                'name = "demo"',
+                'version = "0.1.0"',
+                'dependencies = ["uvloop>=0.19; sys_platform != \\"win32\\""]',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    build_eval_image(
+        "acme",
+        "demo",
+        "c" * 40,
+        checkout,
+        root=tmp_path,
+        executor=Recorder(),
+        base_env={"PATH": "/usr/bin", "HOME": "/tmp", "GITHUB_TOKEN": TOKEN},
+        host_platform="linux/arm64",
+    )
+    text = (tmp_path / "data" / "sandbox" / "eval.Dockerfile").read_text(encoding="utf-8")
+    lines = text.splitlines()
+    prefetch = next(line for line in lines if "uvloop" in line)
+    assert 'uvloop>=0.19; sys_platform != "win32"' in prefetch
+    assert _unquoted_semicolons(prefetch) == 0
+    assert lines[lines.index(prefetch) + 1] == "COPY . /repo"
+    assert not any(line.startswith("sys_platform") for line in lines)
+    assert lines[-1] == OFFLINE_EDITABLE_INSTALL
+    assert "uvloop" not in lines[-1]
+
+
+def test_distinct_requirements_are_not_collapsed(tmp_path: Path) -> None:
+    line = _prefetch_line(
+        tmp_path,
+        "\n".join(
+            [
+                "[build-system]",
+                'requires = ["flit_core>=3.11,<4", "flit_core>=3.11,<4"]',
+                "",
+                "[project]",
+                'name = "demo"',
+                'version = "0.1.0"',
+                'dependencies = ["httpx[http2]>=0.27", "httpx>=0.27"]',
+                "",
+            ]
+        ),
+    )
+    assert line.count("flit_core>=3.11,<4") == 1
+    assert "httpx[http2]>=0.27" in line
+    assert "httpx>=0.27" in line
+    assert line.index("flit_core>=3.11,<4") < line.index("httpx[http2]>=0.27")
+    assert line.index("httpx[http2]>=0.27") < line.index("'httpx>=0.27'")
+
+
+def test_optional_tables_are_not_installed(tmp_path: Path) -> None:
+    line = _prefetch_line(
+        tmp_path,
+        "\n".join(
+            [
+                "[project]",
+                'name = "demo"',
+                'version = "0.1.0"',
+                'dependencies = ["packaging>=21"]',
+                "",
+                "[project.optional-dependencies]",
+                'dev = ["pytest>=8"]',
+                "",
+                "[dependency-groups]",
+                'test = ["ruff>=0.1"]',
+                "",
+            ]
+        ),
+    )
+    assert "packaging>=21" in line
+    assert "pytest>=8" not in line
+    assert "ruff>=0.1" not in line
+
+
+def test_url_vcs_and_newline_requirements_do_not_build(tmp_path: Path) -> None:
+    write_project(tmp_path, f"GITHUB_TOKEN={TOKEN}\n", ["acme/demo"])
+    ready = tmp_path / "ready"
+    ready.mkdir()
+    (ready / "pyproject.toml").write_text(
+        "[project]\nname = 'demo'\nversion = '0.1.0'\n",
+        encoding="utf-8",
+    )
+    sha = "d" * 40
+    recorder = Recorder()
+    env = {"PATH": "/usr/bin", "HOME": "/tmp", "GITHUB_TOKEN": TOKEN}
+    build_eval_image(
+        "acme",
+        "demo",
+        sha,
+        ready,
+        root=tmp_path,
+        executor=recorder,
+        base_env=env,
+        host_platform="linux/arm64",
+    )
+    kept = (tmp_path / "data" / "sandbox" / "eval.Dockerfile").read_text(encoding="utf-8")
+    builds_before = sum(
+        1 for args, _env, _timeout in recorder.calls if len(args) > 1 and args[1] == "build"
+    )
+    cases = {
+        "url": '[project]\nname = "demo"\nversion = "0.1.0"\n'
+        'dependencies = ["secretpkg @ https://example.com/secretpkg.whl"]\n',
+        "vcs": '[project]\nname = "demo"\nversion = "0.1.0"\n'
+        'dependencies = ["git+https://example.com/secretpkg.git"]\n',
+        "newline": '[project]\nname = "demo"\nversion = "0.1.0"\n'
+        'dependencies = ["""secretpkg>=1\n"""]\n',
+    }
+    for name, body in cases.items():
+        checkout = tmp_path / name
+        checkout.mkdir()
+        (checkout / "pyproject.toml").write_text(body, encoding="utf-8")
+        try:
+            build_eval_image(
+                "acme",
+                "demo",
+                sha,
+                checkout,
+                root=tmp_path,
+                executor=recorder,
+                base_env=env,
+                host_platform="linux/arm64",
+            )
+        except ForgeError as exc:
+            error = exc
+        else:
+            raise AssertionError(f"{name} requirement started a build")
+        assert error.reason is ReasonCode.SANDBOX_ERROR
+    builds_after = sum(
+        1 for args, _env, _timeout in recorder.calls if len(args) > 1 and args[1] == "build"
+    )
+    assert builds_after == builds_before
+    text = (tmp_path / "data" / "sandbox" / "eval.Dockerfile").read_text(encoding="utf-8")
+    assert text == kept
+    assert "secretpkg" not in text
 
 
 class _FreshTree:

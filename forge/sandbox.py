@@ -106,9 +106,9 @@ def eval_dockerfile_text(packages: tuple[str, ...] | None = None) -> str:
     """Install git and pytest at build time. The run itself stays offline.
 
     ``packages`` is ``None`` when the checkout is not installed. A tuple is
-    the static package names, and it may be empty. Those names are installed
-    with network access before ``COPY``. The editable install after ``COPY``
-    has no network and does not name a package.
+    the static requirements, and it may be empty. Those requirements are
+    quoted and installed with network access before ``COPY``. The editable
+    install after ``COPY`` has no network and does not name a package.
     """
     text = (
         f"FROM {BASE_IMAGE}\n"
@@ -119,7 +119,8 @@ def eval_dockerfile_text(packages: tuple[str, ...] | None = None) -> str:
         "WORKDIR /repo\n"
     )
     if packages:
-        text += "RUN pip install --no-cache-dir " + " ".join(packages) + "\n"
+        quoted = " ".join(_quote_requirement(item) for item in packages)
+        text += f"RUN pip install --no-cache-dir {quoted}\n"
     text += "COPY . /repo\n"
     if packages is not None:
         text += OFFLINE_EDITABLE_INSTALL + "\n"
@@ -127,11 +128,13 @@ def eval_dockerfile_text(packages: tuple[str, ...] | None = None) -> str:
 
 
 def declared_packages(checkout: Path) -> tuple[str, ...] | None:
-    """Read static dependency names from ``pyproject.toml`` text.
+    """Read static requirements from ``pyproject.toml`` text.
 
     ``None`` means the checkout has no ``pyproject.toml`` and no ``setup.py``.
-    A dynamic dependency table, or a ``setup.py`` with no static project
-    dependencies, is a sandbox error. The checkout is not executed.
+    A dynamic dependency table, a direct URL, a VCS requirement, a newline,
+    or a ``setup.py`` with no static project dependencies, is a sandbox error.
+    The checkout is not executed. Optional dependencies and dependency groups
+    are not read.
     """
     pyproject = checkout / "pyproject.toml"
     setup = checkout / "setup.py"
@@ -148,12 +151,12 @@ def declared_packages(checkout: Path) -> tuple[str, ...] | None:
             "A setup.py checkout has no static pyproject dependencies.",
             reason=ReasonCode.SANDBOX_ERROR,
         )
-    names: list[str] = []
+    preserved: list[str] = []
     for requirement in (*(requires or ()), *(dependencies or ())):
-        name = _requirement_name(requirement)
-        if name not in names:
-            names.append(name)
-    return tuple(names)
+        text = _preserved_requirement(requirement)
+        if text not in preserved:
+            preserved.append(text)
+    return tuple(preserved)
 
 
 def container_run_args(
@@ -742,22 +745,83 @@ def _static_requirement_lists(text: str) -> tuple[list[str] | None, list[str]]:
     return dependencies, requires
 
 
-def _requirement_name(requirement: str) -> str:
-    text = requirement.split("#", 1)[0].split(";", 1)[0].strip()
-    if " @ " in text:
-        text = text.split(" @ ", 1)[0].strip()
-    name: list[str] = []
+_SPECIFIER = re.compile(r"(?:===|==|!=|<=|>=|~=|<|>)\s*[0-9A-Za-z*+!._-]+")
+_EXTRAS = re.compile(r"[A-Za-z0-9._-]+(?:\s*,\s*[A-Za-z0-9._-]+)*")
+_VCS_PREFIXES = ("git+", "hg+", "svn+", "bzr+")
+
+
+def _quote_requirement(requirement: str) -> str:
+    """Keep a marker semicolon inside one shell word."""
+    escaped = requirement.replace("\\", "\\\\").replace("'", "'\"'\"'")
+    return f"'{escaped}'"
+
+
+def _preserved_requirement(requirement: str) -> str:
+    """Keep the specifier, extras, and marker. Reject URLs, VCS, and newlines."""
+    if "\n" in requirement or "\r" in requirement:
+        raise ForgeError(
+            "A dependency requirement cannot contain a newline.",
+            reason=ReasonCode.SANDBOX_ERROR,
+        )
+    text = _strip_hash_comment(requirement).strip()
+    lowered = text.lower()
+    if any(prefix in lowered for prefix in _VCS_PREFIXES):
+        raise ForgeError(
+            "A VCS requirement cannot be installed offline.",
+            reason=ReasonCode.SANDBOX_ERROR,
+        )
+    if "://" in text or " @ " in text:
+        raise ForgeError(
+            "A direct URL requirement cannot be installed offline.",
+            reason=ReasonCode.SANDBOX_ERROR,
+        )
+    name_chars: list[str] = []
     for char in text:
-        if char in "[ \t<>=!~":
+        if char in "[ \t<>=!~;":
             break
-        name.append(char)
-    found = "".join(name)
-    if _PACKAGE_NAME.fullmatch(found) is None:
+        name_chars.append(char)
+    name = "".join(name_chars)
+    if _PACKAGE_NAME.fullmatch(name) is None or not _requirement_rest(text[len(name) :]):
         raise ForgeError(
             "A dependency requirement did not name a package.",
             reason=ReasonCode.SANDBOX_ERROR,
         )
-    return found
+    return text
+
+
+def _strip_hash_comment(requirement: str) -> str:
+    quote: str | None = None
+    for index, char in enumerate(requirement):
+        if quote is not None:
+            if char == quote:
+                quote = None
+            continue
+        if char in {'"', "'"}:
+            quote = char
+            continue
+        if char == "#":
+            return requirement[:index]
+    return requirement
+
+
+def _requirement_rest(rest: str) -> bool:
+    body = rest.strip()
+    if not body:
+        return True
+    if body.startswith("["):
+        end = body.find("]")
+        if end < 0 or _EXTRAS.fullmatch(body[1:end]) is None:
+            return False
+        body = body[end + 1 :].strip()
+    if ";" in body:
+        spec, marker = body.split(";", 1)
+        if not marker.strip():
+            return False
+        body = spec.strip()
+    if not body:
+        return True
+    clauses = [part.strip() for part in body.split(",")]
+    return bool(clauses) and all(_SPECIFIER.fullmatch(clause) for clause in clauses)
 
 
 def _build_image(
