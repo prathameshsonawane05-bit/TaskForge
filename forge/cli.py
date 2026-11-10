@@ -18,7 +18,7 @@ from forge.funnel import format_report, run_funnel
 from forge.gates import format_gates, run_fixture_gates
 from forge.models import ReasonCode
 from forge.outcomes import format_trial, run_widget_trial
-from forge.package import format_package, package_fixture
+from forge.package import format_package, format_pull_package, package_fixture, package_pull
 from forge.report import write_reports
 from forge.sandbox import DEFAULT_TIMEOUT_SECONDS, format_success, run_sandbox
 from forge.split import format_split, run_split
@@ -280,6 +280,28 @@ def package_command(
         raise typer.Exit(code=2) from None
     secret = secret_for_redaction(root / ".env")
     typer.echo(redact(format_package(result), secret))
+    if not result.written:
+        raise typer.Exit(code=1)
+
+
+@app.command("package-pull")
+def package_pull_command(
+    repo: Annotated[str, typer.Argument(help="Repository as owner/name.")],
+    number: Annotated[int, typer.Argument(help="Pull request number.")],
+    timeout: Annotated[
+        int,
+        typer.Option("--timeout", help="Seconds before one container is killed. Default is 60."),
+    ] = DEFAULT_TIMEOUT_SECONDS,
+) -> None:
+    """Package one accepted pull request. A filter rejection writes nothing."""
+    root = find_repo_root()
+    try:
+        result = package_pull(repo, number, root=root, timeout=timeout)
+    except Exception as exc:
+        _emit_failure(root, exc)
+        raise typer.Exit(code=2) from None
+    secret = secret_for_redaction(root / ".env")
+    typer.echo(redact(format_pull_package(result), secret))
     if not result.written:
         raise typer.Exit(code=1)
 

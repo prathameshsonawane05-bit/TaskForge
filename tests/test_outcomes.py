@@ -1,11 +1,13 @@
 """Classification of two pytest runs. These tests do not call Docker."""
 
 from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
 
 from forge.outcomes import (
     TRIAL_SCRIPT,
     classify,
+    format_trial,
     parse_pytest_verbose,
     run_widget_trial,
 )
@@ -211,6 +213,11 @@ def test_trial_mounts_only_the_patch_directory(tmp_path: Path) -> None:
         assert "GITHUB_TOKEN" not in env
         assert all(TOKEN not in value for value in env.values())
     assert "pip install -e ." not in written
+    formatted = format_trial(report)
+    assert "solution_absent yes" in formatted.splitlines()
+    without = format_trial(replace(report, trial_stdout="BEFORE_STATUS:1\n"))
+    assert "solution_absent no" in without.splitlines()
+    assert "solution_absent yes" not in without.splitlines()
 
 
 def test_packaged_checkout_is_installed_after_copy(tmp_path: Path) -> None:

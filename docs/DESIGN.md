@@ -45,7 +45,9 @@ The first failure is the only reject reason.
 - V7. An added source line from `solution.patch`, excluding diff headers, must not equal a whole stripped instruction line. A sentence that merely contains that text is not a leak.
 - V8. A quoted `pytest.raises` match, or a quoted equality on exception text, must appear in the instruction. Otherwise the check is `hidden_requirement`. `assert value() == 1` is not an error message.
 
-`forge package` writes a task only when V1 through V5 accept and V6 through V8 are clean. The widget fixture stays rejected for `regression`.
+`forge package` writes a task only when V1 through V5 accept and V6 through V8 are clean. The widget fixture stays rejected for `regression`. `forge package widget` and `forge package counter` are unchanged.
+
+`forge package-pull owner/name NUMBER` checks the allowlist and the SPDX license, then applies the current filters. A filter rejection writes nothing and exits 1 with that reason. An accepted pull request uses the existing split, the editable eval image, and the existing trial. The base commit is the first parent of the merge commit. The package is written under `output/` only when V1 through V5 accept and V6 through V8 are clean. It records the repository, the SPDX id, the pull-request URL, the issue URL, and the commit SHAs. Difficulty is an estimate.
 
 ## Funnel report
 
@@ -64,4 +66,6 @@ Both repeat the funnel counts: `repo`, `limit`, `considered`, every rejection co
 - This is not a security audit.
 - Difficulty is only an estimate. Tasks are not validated against real agents.
 - The labeled evaluation and the held-out window were written by the same author as the filters. The funnel accepted none in either window, so precision is undefined and recall is undefined. Agreement on those rejects is not evidence that an accept would be right.
+- The click window was also written by that author. Precision was 4/4 and recall was 4/4. That agreement is not an independent evaluation.
+- The one upstream package is pull request 3858 of `pallets/click`. Nine tests still failed, twenty were skipped, and V6 recorded `other`. It is not committed.
 - The only committed task is `output/sample/local-counter`. It has no upstream repository, and it was written to pass the gates.

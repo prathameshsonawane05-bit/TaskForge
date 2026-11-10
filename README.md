@@ -45,9 +45,10 @@ forge sandbox owner/name FULL_SHA --patch path/to.patch -- python -c 'print(1)'
 forge outcomes
 forge gates counter
 forge package counter
+forge package-pull owner/name NUMBER
 ```
 
-`forge check` accepts or refuses one repository. `forge funnel` reads that many closed pull requests and prints one count per rejection reason. The limit caps how many pull requests are read. It does not cap how many are accepted. `forge report` runs that same funnel and writes `output/reports/<owner>-<name>-<limit>.json` and the matching Markdown file, then prints both paths. `forge split` prints the source names, the test names, the other names, and the issue URL for one pull request number. It does not write those files. `forge sandbox` runs the command after `--` in a container at that 40-character commit. `forge outcomes` classifies the local widget fixture once. `forge gates` runs the validation gates on `widget` or `counter`. `forge package` writes a task only when those gates accept.
+`forge check` accepts or refuses one repository. `forge funnel` reads that many closed pull requests and prints one count per rejection reason. The limit caps how many pull requests are read. It does not cap how many are accepted. `forge report` runs that same funnel and writes `output/reports/<owner>-<name>-<limit>.json` and the matching Markdown file, then prints both paths. `forge split` prints the source names, the test names, the other names, and the issue URL for one pull request number. It does not write those files. `forge sandbox` runs the command after `--` in a container at that 40-character commit. `forge outcomes` classifies the local widget fixture once. `forge gates` runs the validation gates on `widget` or `counter`. `forge package` writes a local fixture task only when those gates accept. `forge package-pull` checks the allowlist and the SPDX license, then applies the current filters. A filter rejection writes nothing. An accepted pull request is packaged under `output/` only when gates V1 through V5 accept and V6 through V8 are clean.
 
 ## Checks
 
@@ -61,7 +62,7 @@ pytest
 
 ## Docker
 
-`forge sandbox`, `forge outcomes`, `forge gates`, and `forge package` need Docker. The Docker daemon must be able to mount the clone, and this Colima does not mount `/tmp`. Repository code runs only inside that sandbox. The container has no network, 512 MB of memory, one CPU, a timeout, and a read-only patch mount. The host does not run the repository's tests or setup. The eval image build may use the network. A checkout with `pyproject.toml` or `setup.py` is installed with `pip install -e .` after the files are copied. The widget and counter fixtures have no packaging metadata and keep the git and pytest image.
+`forge sandbox`, `forge outcomes`, `forge gates`, `forge package`, and `forge package-pull` need Docker. The Docker daemon must be able to mount the clone, and this Colima does not mount `/tmp`. Repository code runs only inside that sandbox. The container has no network, 512 MB of memory, one CPU, a timeout, and a read-only patch mount. The host does not run the repository's tests or setup. The eval image build may use the network. A checkout with `pyproject.toml` or `setup.py` is installed with `pip install -e .` after the files are copied. The widget and counter fixtures have no packaging metadata and keep the git and pytest image.
 
 ## Limitations
 
@@ -71,4 +72,6 @@ pytest
 - This is not a security audit.
 - Difficulty is only an estimate. Tasks are not validated against real agents.
 - The labeled evaluation and the held-out window were written by the same author as the filters. The funnel accepted none in either window, so precision is undefined and recall is undefined. Agreement on those rejects is not evidence that an accept would be right.
+- The click window was also written by that author. Precision was 4/4 and recall was 4/4. That agreement is not an independent evaluation.
+- The one upstream package is pull request 3858 of `pallets/click`. Nine tests still failed, twenty were skipped, and V6 recorded `other`. It is not committed.
 - The only committed task is `output/sample/local-counter`. It has no upstream repository, and it was written to pass the gates.

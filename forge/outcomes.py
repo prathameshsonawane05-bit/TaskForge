@@ -69,6 +69,7 @@ class TrialReport:
     before_stderr: str
     after_stdout: str
     after_stderr: str
+    trial_stdout: str
 
 
 def parse_pytest_verbose(text: str) -> dict[str, str]:
@@ -206,6 +207,7 @@ def format_trial(report: TrialReport) -> str:
         ("skipped", report.classification.skipped),
     )
     total = sum(len(ids) for _name, ids in groups)
+    absent = "SOLUTION_CHECK:absent" in report.trial_stdout.splitlines()
     lines = [
         f"repo {report.full_name}",
         f"commit {report.sha}",
@@ -214,7 +216,7 @@ def format_trial(report: TrialReport) -> str:
         f"container_exit {report.container_exit}",
         f"before_pytest {report.before_status}",
         f"after_pytest {report.after_status}",
-        "solution_absent yes",
+        f"solution_absent {'yes' if absent else 'no'}",
         "note A single run is not a validation gate.",
     ]
     for name, ids in groups:
@@ -277,6 +279,7 @@ def _report(outcome: SandboxSuccess, *, image: str) -> TrialReport:
         before_stderr=before_stderr,
         after_stdout=after_stdout,
         after_stderr=after_stderr,
+        trial_stdout=outcome.stdout,
     )
 
 
