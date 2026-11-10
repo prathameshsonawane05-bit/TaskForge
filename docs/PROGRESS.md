@@ -4875,3 +4875,65 @@ A coding prompt requires a logged-in status. This check did not have one. `AGENT
 
 Next stage:
 No further agent validation was started.
+
+## Requirement prefetch: keep specifiers, extras, and markers (commit 6b5206cc26b5df46ec1512fdae49eec84e2744d1)
+
+What was built:
+The networked prefetch installed bare package names. `_requirement_name` dropped version specifiers, extras, and environment markers. The offline editable install uses `--no-deps`, so those constraints were not applied later. Click's build requirement `flit_core>=3.11,<4` was reduced to `flit_core`. `tests/test_outcomes.py` expected the stripped names `setuptools packaging httpx`. That assertion was the bug: a prefetch that kept the declared constraints would fail the test.
+
+The prefetch now preserves the version specifier, the extras, and the environment marker for `project.dependencies` and `build-system.requires`. Every requirement is quoted in the Dockerfile `RUN`, so a marker semicolon cannot start a shell command. Build-system requires still come before project dependencies. Two requirements that share a name are not collapsed when their specifiers or extras differ. A repeated full requirement is installed once.
+
+A direct URL requirement, a VCS requirement, or a requirement containing a newline is a sandbox error. Its bare name is not installed, and `docker build` does not start. A dynamic dependency table and a `setup.py` without static project dependencies stay sandbox errors, with no docker build. The offline line stays `RUN --network=none pip install --no-cache-dir --no-deps --no-build-isolation -e .`. Optional dependencies and dependency groups are not installed. No package dependency was added.
+
+The stripped-name assertion was replaced. One test fails if `flit_core>=3.11,<4` loses either bound. One fails if `httpx[http2]>=0.27` loses the extra or the version. One fails if `uvloop>=0.19; sys_platform != "win32"` loses the marker or the semicolon becomes another command. The offline line still names no package, and a dynamic table still does not build.
+
+No filter, label, gate, time limit, or the recorded agent result changed. `forge package-pull` was not run. An agent was not run. `--platform linux/amd64` was not passed.
+
+Commands run and their real output:
+
+`.venv/bin/ruff check forge tests && .venv/bin/mypy && .venv/bin/pytest` (exit 0)
+
+```
+All checks passed!
+Success: no issues found in 40 source files
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/shubhambaviskar/Desktop/TaskForge
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 208 items
+
+tests/test_allowlist.py ....                                             [  1%]
+tests/test_check.py ..............                                       [  8%]
+tests/test_ci.py .                                                       [  9%]
+tests/test_cli.py .........                                              [ 13%]
+tests/test_config.py ......                                              [ 16%]
+tests/test_filters.py .............................................      [ 37%]
+tests/test_funnel.py ..........                                          [ 42%]
+tests/test_gates.py .............                                        [ 49%]
+tests/test_git_hygiene.py .....                                          [ 51%]
+tests/test_github.py .....................                               [ 61%]
+tests/test_outcomes.py ..............                                    [ 68%]
+tests/test_package_pull.py ......                                        [ 71%]
+tests/test_publish.py ...........                                        [ 76%]
+tests/test_quality.py .....................                              [ 86%]
+tests/test_report.py ...                                                 [ 87%]
+tests/test_sandbox.py ............                                       [ 93%]
+tests/test_split.py ............                                         [ 99%]
+tests/test_wheel.py .                                                    [100%]
+
+============================= 208 passed in 3.35s ==============================
+```
+
+Bugs found and fixed:
+The prefetch dropped constraints, and the test required that drop. The requirements are now quoted in full. No product bug remained after that.
+
+Files changed:
+`forge/sandbox.py`, `tests/test_outcomes.py`, `README.md`, `docs/DESIGN.md`.
+
+Decisions and open questions:
+The parser is text. It does not install a URL by its bare name. `AGENTS.md` stayed unstaged.
+
+Next stage:
+No further stage was started.
