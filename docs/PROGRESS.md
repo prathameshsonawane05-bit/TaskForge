@@ -3896,3 +3896,67 @@ The 13 labels are all reject. Agreement on an all-reject set is not evidence tha
 
 Next stage:
 Improvement stage 12 was not started.
+
+## Improvement stage 12: document the pipeline and the current results (commit 0a4b1832aa6b8d84b102d5107e42d5d147c447e1)
+
+What was built:
+Before this change, the README said "on this machine" and "this Colima". The limitations still named one upstream package, pull 3858. Stage 10 wrote three packages, 3858, 3781, and 3769, and 3739 wrote none because V7 leaked one solution line. `pyproject.toml` described only the license check. The repository has no LICENSE file. `docs/EVALUATION.md` still said the encode/httpx funnel-reason column is blank.
+
+The README setup sentence now points at the locked install that was already there. A Docker daemon which cannot mount `/tmp` cannot use a clone under `/tmp`. The README does not name this computer, this Colima, or a home directory. It describes the path the code takes: allowlist and SPDX check, closed-pull selection, filters, split, Docker trial, gates V1 through V5, quality checks V6 through V8, and package publish. The walkthrough is `forge gates counter` and `forge package counter`. Those two need Docker and do not need a token. `forge check`, `forge funnel`, `forge report`, `forge split`, and `forge package-pull` need a token. `forge sandbox`, `forge outcomes`, `forge gates`, `forge package`, and `forge package-pull` need Docker.
+
+`output/sample/local-counter` is described by the files it has: `instruction.md`, `solution/solution.patch`, `tests/test.patch`, `tests/config.json`, `task.json`, and `ATTRIBUTION.md`. `docs/funnel-report.md` sits next to the other docs and prints the same fields `forge report` prints, with the local counter's `no upstream` values. `output/reports` and `output/pallets-click-*` were not committed.
+
+The limitations now name three windows that accepted none, so precision and recall are undefined: `psf/requests`, `pallets/itsdangerous`, and `encode/httpx`. The click window was 4/4 and was labeled by the filter author. The three written packages are not committed. 3739 was not packaged. Nine tests still failed and twenty were skipped on the packaged click pulls. V6 recorded `other`. No agent was run. Difficulty is an estimate.
+
+The `pyproject.toml` description now states that pipeline. No LICENSE file was added, and no SPDX id was invented. The README says this repository has no chosen license, and that an upstream task keeps the SPDX id of its repository. The encode/httpx sentence that called the funnel-reason column blank now says the column was filled afterwards. No label and no funnel reason changed.
+
+No filter, gate, 30 second limit, or image digest changed. `forge package-pull` was not run. No upstream repository code was run on the host. The token was not printed.
+
+Commands run and their real output:
+
+`.venv/bin/ruff check forge tests && .venv/bin/mypy && .venv/bin/pytest` (exit 0)
+
+```
+All checks passed!
+Success: no issues found in 40 source files
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/shubhambaviskar/Desktop/TaskForge
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 200 items
+
+tests/test_allowlist.py ....                                             [  2%]
+tests/test_check.py ..............                                       [  9%]
+tests/test_ci.py .                                                       [  9%]
+tests/test_cli.py .........                                              [ 14%]
+tests/test_config.py ......                                              [ 17%]
+tests/test_filters.py .............................................      [ 39%]
+tests/test_funnel.py ..........                                          [ 44%]
+tests/test_gates.py .............                                        [ 51%]
+tests/test_git_hygiene.py ....                                           [ 53%]
+tests/test_github.py .....................                               [ 63%]
+tests/test_outcomes.py .......                                           [ 67%]
+tests/test_package_pull.py ......                                        [ 70%]
+tests/test_publish.py ...........                                        [ 75%]
+tests/test_quality.py .....................                              [ 86%]
+tests/test_report.py ...                                                 [ 87%]
+tests/test_sandbox.py ............                                       [ 93%]
+tests/test_split.py ............                                         [ 99%]
+tests/test_wheel.py .                                                    [100%]
+
+============================= 200 passed in 3.40s ==============================
+```
+
+Bugs found and fixed:
+None. The documentation described the results that were already recorded.
+
+Files changed:
+`README.md`, `docs/DESIGN.md`, `docs/EVALUATION.md`, `docs/funnel-report.md`, `pyproject.toml`.
+
+Decisions and open questions:
+The local funnel report is not a GitHub window, so its counts are `no upstream`. `AGENTS.md` stayed unstaged.
+
+Next stage:
+No further improvement stage was started.
