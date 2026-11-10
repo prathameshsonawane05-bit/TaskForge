@@ -17,7 +17,7 @@ from pydantic import ValidationError
 from forge.check import check_repository
 from forge.config import default_cache_path, load_github_token
 from forge.errors import ForgeError, GitHubError
-from forge.filters import classify_pull, early_reason
+from forge.filters import classify_pull, decision_evidence, early_reason
 from forge.github import API_ROOT, GitHubClient, next_link
 from forge.models import (
     CheckResult,
@@ -75,6 +75,7 @@ def format_report(report: FunnelReport) -> str:
     lines.append(f"accepted {report.accepted}")
     cut_off = "yes" if report.older_prs_cut_off else "no"
     lines.append(f"older_prs_cut_off {cut_off}")
+    lines.extend(report.evidence)
     return "\n".join(lines)
 
 
@@ -83,6 +84,7 @@ def _collect(full_name: str, *, limit: int, client: GitHubClient) -> FunnelRun:
     pulls, cut_off = collect_closed_pulls(client, owner, name, limit)
     counts_map = {reason: 0 for reason in FilterReason}
     accepted = 0
+    evidence: list[str] = []
     for pull in pulls:
         pull = _with_size(client, owner, name, pull)
         files: list[PullFilePayload] | None
@@ -91,6 +93,7 @@ def _collect(full_name: str, *, limit: int, client: GitHubClient) -> FunnelRun:
         else:
             files = fetch_pull_files(client, owner, name, pull.number)
         reason = classify_pull(pull, files)
+        evidence.append(decision_evidence(pull, files))
         if reason is None:
             accepted += 1
         else:
@@ -109,6 +112,7 @@ def _collect(full_name: str, *, limit: int, client: GitHubClient) -> FunnelRun:
         counts=counts,
         accepted=accepted,
         older_prs_cut_off=cut_off,
+        evidence=evidence,
     )
     return FunnelRun(report=report)
 

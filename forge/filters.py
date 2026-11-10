@@ -105,14 +105,20 @@ def classify_pull(
     files: list[PullFilePayload] | None,
 ) -> FilterReason | None:
     """Return the first rejection, or None when the pull passes every filter."""
-    early = early_reason(pull)
-    if early is not None:
-        return early
-    if files is None:
-        raise ValueError("File list is required after the size filters pass.")
-    if len(files) > MAX_CHANGED_FILES:
-        return FilterReason.TOO_MANY_FILES
-    return content_reason(pull, files)
+    return _decide(pull, files)[0]
+
+
+def decision_evidence(
+    pull: PullPayload,
+    files: list[PullFilePayload] | None,
+) -> str:
+    """Describe the same reason :func:`classify_pull` returns.
+
+    Binary, lockfile, and docs-only name the first file that caused them.
+    A length or sum mismatch includes both numbers. An accept includes the
+    issue number from the first closing reference.
+    """
+    return _decide(pull, files)[1]
 
 
 def early_reason(pull: PullPayload) -> FilterReason | None:
@@ -133,19 +139,7 @@ def early_reason(pull: PullPayload) -> FilterReason | None:
 
 
 def content_reason(pull: PullPayload, files: list[PullFilePayload]) -> FilterReason | None:
-    if any(is_binary(item) for item in files):
-        return FilterReason.BINARY
-    if any(is_lockfile(item.filename) for item in files):
-        return FilterReason.LOCKFILE
-    if files and all(is_documentation(item.filename) for item in files):
-        return FilterReason.DOCS_ONLY
-    has_source = any(is_source_file(item.filename) for item in files)
-    has_test = any(is_test_file(item.filename) for item in files)
-    if not has_source or not has_test:
-        return FilterReason.MISSING_SOURCE_OR_TEST
-    if not has_linked_issue(pull.body):
-        return FilterReason.NO_LINKED_ISSUE
-    return None
+    return _content_decision(pull, files)[0]
 
 
 def is_binary(item: PullFilePayload) -> bool:
@@ -221,3 +215,104 @@ def _closing_match(body: str | None) -> re.Match[str] | None:
 
 def _body_reverts(body: str | None) -> bool:
     return body is not None and _REVERT_BODY in body
+
+
+def _decide(
+    pull: PullPayload,
+    files: list[PullFilePayload] | None,
+) -> tuple[FilterReason | None, str]:
+    early = early_reason(pull)
+    if early is not None:
+        return early, _early_evidence(pull, early)
+    if files is None:
+        raise ValueError("File list is required after the size filters pass.")
+    if len(files) > MAX_CHANGED_FILES:
+        return FilterReason.TOO_MANY_FILES, f"too_many_files {len(files)}"
+    return _content_decision(pull, files)
+
+
+def _content_decision(
+    pull: PullPayload,
+    files: list[PullFilePayload],
+) -> tuple[FilterReason | None, str]:
+    if pull.changed_files is not None and len(files) != pull.changed_files:
+        text = f"unknown_size files {len(files)} changed_files {pull.changed_files}"
+        return FilterReason.UNKNOWN_SIZE, text
+    counted = _file_count_decision(pull, files)
+    if counted is not None:
+        return counted
+    binary = next((item for item in files if is_binary(item)), None)
+    if binary is not None:
+        return FilterReason.BINARY, f"binary {binary.filename}"
+    lock = next((item for item in files if is_lockfile(item.filename)), None)
+    if lock is not None:
+        return FilterReason.LOCKFILE, f"lockfile {lock.filename}"
+    if files and all(is_documentation(item.filename) for item in files):
+        return FilterReason.DOCS_ONLY, f"docs_only {files[0].filename}"
+    has_source = any(is_source_file(item.filename) for item in files)
+    has_test = any(is_test_file(item.filename) for item in files)
+    if not has_source or not has_test:
+        return FilterReason.MISSING_SOURCE_OR_TEST, "missing_source_or_test"
+    if not has_linked_issue(pull.body):
+        return FilterReason.NO_LINKED_ISSUE, "no_linked_issue"
+    reference = first_closing_reference(pull.body, repo_owner="owner", repo_name="name")
+    if reference is None:
+        return None, "accepted"
+    return None, f"accepted issue {reference.number}"
+
+
+def _file_count_decision(
+    pull: PullPayload,
+    files: list[PullFilePayload],
+) -> tuple[FilterReason, str] | None:
+    """Compare per-file counts only when the files API sent them."""
+    states = [_count_state(item) for item in files]
+    if states and all(state == "both" for state in states):
+        file_additions = sum(_required_count(item.additions) for item in files)
+        file_deletions = sum(_required_count(item.deletions) for item in files)
+        pull_additions = pull.additions
+        pull_deletions = pull.deletions
+        if pull_additions is None or pull_deletions is None:
+            return FilterReason.UNKNOWN_SIZE, "unknown_size additions missing"
+        if file_additions != pull_additions or file_deletions != pull_deletions:
+            text = (
+                f"unknown_size additions {file_additions} {pull_additions} "
+                f"deletions {file_deletions} {pull_deletions}"
+            )
+            return FilterReason.UNKNOWN_SIZE, text
+        return None
+    if any(state != "none" for state in states):
+        return FilterReason.UNKNOWN_SIZE, "unknown_size file counts incomplete"
+    return None
+
+
+def _count_state(item: PullFilePayload) -> str:
+    has_additions = item.additions is not None
+    has_deletions = item.deletions is not None
+    if has_additions and has_deletions:
+        return "both"
+    if has_additions or has_deletions:
+        return "partial"
+    return "none"
+
+
+def _required_count(value: int | None) -> int:
+    if value is None:
+        raise ValueError("file count missing after the completeness check")
+    return value
+
+
+def _early_evidence(pull: PullPayload, reason: FilterReason) -> str:
+    if reason is FilterReason.TOO_MANY_FILES:
+        return f"too_many_files {pull.changed_files}"
+    if reason is FilterReason.TOO_MANY_LINES:
+        additions = pull.additions or 0
+        deletions = pull.deletions or 0
+        return f"too_many_lines {additions + deletions}"
+    if reason is FilterReason.UNKNOWN_SIZE:
+        if pull.changed_files is None:
+            return "unknown_size changed_files missing"
+        if pull.additions is None:
+            return "unknown_size additions missing"
+        return "unknown_size deletions missing"
+    return reason.value

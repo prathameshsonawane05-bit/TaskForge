@@ -40,6 +40,7 @@ def render_json(report: FunnelReport) -> str:
     payload.update(report.counts.model_dump())
     payload["accepted"] = report.accepted
     payload["older_prs_cut_off"] = _cut_off(report)
+    payload["evidence"] = report.evidence
     return json.dumps(payload, indent=2) + "\n"
 
 

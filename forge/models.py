@@ -94,6 +94,8 @@ class PullFilePayload(BaseModel):
     binary: bool | None = None
     status: str | None = None
     previous_filename: str | None = None
+    additions: int | None = None
+    deletions: int | None = None
 
 
 class IssuePayload(BaseModel):
@@ -149,3 +151,4 @@ class FunnelReport(BaseModel):
     counts: FunnelCounts
     accepted: int
     older_prs_cut_off: bool
+    evidence: list[str] = Field(default_factory=list)

@@ -19,6 +19,8 @@ A closed pull request is rejected for the first reason below. `considered` later
 11. `missing_source_or_test`. The file list needs at least one Python source file and one Python test file. A test file is `conftest.py`, `test_*.py`, `*_test.py`, or a `.py` file under `test/` or `tests/`. Any other `.py` file is source.
 12. `no_linked_issue`. A closing keyword (`close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves`, `resolved`) must sit immediately before `#N`, `owner/repo#N`, or `https://github.com/owner/repo/issues/N`. `Since #13714` is not a link. A keyword and a number in different sentences do not link.
 
+When the file list is present and its length is not `changed_files`, the reason is `unknown_size`. That check is after the file-list cap of 5 and before `binary`. A shorter list is not accepted. A longer list is not accepted on the pull's smaller count. Each file keeps `additions` and `deletions` when the files API sends them. If any listed file has one of those counts and another listed file lacks one, the reason is `unknown_size`. If every listed file has both and either sum differs from the pull total, the reason is `unknown_size`. If no listed file carries those fields, the pull totals are used. `decision_evidence` describes the same reason. It names the first file for `binary`, `lockfile`, and `docs_only`, includes both numbers for a length or sum mismatch, and includes the issue number from the first closing reference when the pull is accepted.
+
 ## Sandbox
 
 `forge sandbox`, `forge outcomes`, `forge gates`, and `forge package` run repository code only inside Docker. The `docker run` limits are:

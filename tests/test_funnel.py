@@ -154,6 +154,10 @@ def test_counts_add_up_and_large_pulls_skip_the_file_list(tmp_path: Path) -> Non
     assert "accepted 1" in text
     assert "order created desc" in text
     assert "older_prs_cut_off no" in text
+    assert "binary assets/logo.png" in text
+    assert "lockfile poetry.lock" in text
+    assert "docs_only README.md" in text
+    assert "accepted issue 12" in text
 
 
 def test_list_omits_size_so_the_pull_is_fetched_before_files(tmp_path: Path) -> None:
