@@ -3766,3 +3766,133 @@ The repeated runs are the same machine. Elapsed time differed, and the compared 
 
 Next stage:
 Improvement stage 11 was not started.
+
+## Improvement stage 11: label encode/httpx before the funnel (commits b864c660efac44ccda1d31cb06fa133b7a0fe5f3 and 9818a7eed3d6f2905ff2d029c9a22da859463803)
+
+What was built:
+The labeled windows already in `docs/EVALUATION.md` were `psf/requests`, `pallets/itsdangerous`, and `pallets/click`. `encode/httpx` had no label table. The new sample is `encode/httpx`, 40 closed pull requests, ordered by created time descending. The repository and the limit were not changed after the pulls were read.
+
+The labels were written before the funnel. `forge/filters.py` was not opened while labeling. The rubric already in `docs/EVALUATION.md` was not changed. The window contains 13 merged pull requests. That count is under 20, so no further page was fetched. Every merged pull request is labeled. The 27 unmerged pull requests are not candidates. The closed-list payload did not include `changed_files`, `additions`, or `deletions`. The labels use the file list. The funnel-reason column was empty in commit `b864c660efac44ccda1d31cb06fa133b7a0fe5f3`.
+
+I rejected all 13. The funnel rejected all 13, and each funnel reason is the clause the label names. True accept 0, false accept 0, false reject 0, true reject 13. The funnel accepted none, so precision is undefined. I accepted none, so recall is undefined. I wrote the filters and these labels, so the result is not an independent evaluation. A limit-30 funnel of this repository already returned accepted 0. The overlap is not a blind sample.
+
+No agent was run. A patch was not written by hand and called an agent result. This repository has no agent runner. The agent test was not run. The stage 10 trials show the hidden tests failing before the reference solution and passing after it. That is not an agent solving the task. Instruction clarity was not scored. `forge package-pull` was not run. No upstream repository code was run on the host. The token was not printed. No filter was changed. `forge/` was not changed.
+
+Commands run and their real output:
+
+`.venv/bin/forge funnel encode/httpx --limit 40` (exit 0)
+
+```
+repo encode/httpx
+limit 40
+order created desc
+considered 40
+not_merged 27
+revert 0
+too_many_files 2
+too_many_lines 0
+unknown_size 0
+binary 0
+lockfile 0
+docs_only 4
+missing_source_or_test 6
+no_linked_issue 1
+accepted 0
+older_prs_cut_off yes
+not_merged
+missing_source_or_test
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+missing_source_or_test
+not_merged
+not_merged
+not_merged
+not_merged
+docs_only docs/advanced/ssl.md
+missing_source_or_test
+not_merged
+not_merged
+not_merged
+docs_only docs/quickstart.md
+not_merged
+missing_source_or_test
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+not_merged
+missing_source_or_test
+too_many_files 8
+too_many_files 8
+no_linked_issue
+missing_source_or_test
+docs_only README.md
+not_merged
+docs_only requirements.txt
+not_merged
+```
+
+`.venv/bin/forge report encode/httpx --limit 40` (exit 0)
+
+```
+json /Users/shubhambaviskar/Desktop/TaskForge/output/reports/encode-httpx-40.json
+markdown /Users/shubhambaviskar/Desktop/TaskForge/output/reports/encode-httpx-40.md
+```
+
+Those report files stay under `output/` and were not committed. Commit `9818a7eed3d6f2905ff2d029c9a22da859463803` fills only the funnel-reason column.
+
+`.venv/bin/ruff check forge tests && .venv/bin/mypy && .venv/bin/pytest` (exit 0)
+
+```
+All checks passed!
+Success: no issues found in 40 source files
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/shubhambaviskar/Desktop/TaskForge
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 200 items
+
+tests/test_allowlist.py ....                                             [  2%]
+tests/test_check.py ..............                                       [  9%]
+tests/test_ci.py .                                                       [  9%]
+tests/test_cli.py .........                                              [ 14%]
+tests/test_config.py ......                                              [ 17%]
+tests/test_filters.py .............................................      [ 39%]
+tests/test_funnel.py ..........                                          [ 44%]
+tests/test_gates.py .............                                        [ 51%]
+tests/test_git_hygiene.py ....                                           [ 53%]
+tests/test_github.py .....................                               [ 63%]
+tests/test_outcomes.py .......                                           [ 67%]
+tests/test_package_pull.py ......                                        [ 70%]
+tests/test_publish.py ...........                                        [ 75%]
+tests/test_quality.py .....................                              [ 86%]
+tests/test_report.py ...                                                 [ 87%]
+tests/test_sandbox.py ............                                       [ 93%]
+tests/test_split.py ............                                         [ 99%]
+tests/test_wheel.py .                                                    [100%]
+
+============================= 200 passed in 3.38s ==============================
+```
+
+Bugs found and fixed:
+None. The funnel reasons matched the labels, and no label was changed.
+
+Files changed:
+`docs/EVALUATION.md`. The report files under `output/reports/` were not committed.
+
+Decisions and open questions:
+The 13 labels are all reject. Agreement on an all-reject set is not evidence that an accept would be right. `AGENTS.md` stayed unstaged.
+
+Next stage:
+Improvement stage 12 was not started.
