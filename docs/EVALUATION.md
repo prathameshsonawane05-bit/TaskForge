@@ -25,7 +25,7 @@ If every clause holds, the label is accept.
 
 ## Window
 
-The window is the 50 most recently closed pull requests of `psf/requests`. It contains 19 merged pull requests. That count is under 20, so no further page was fetched. Every merged pull request in the window is labeled. The funnel had not been run when these labels were written.
+The window is the 50 closed pull requests of `psf/requests` from the closed list ordered by created time, descending. It contains 19 merged pull requests. That count is under 20, so no further page was fetched. Every merged pull request in the window is labeled. The funnel had not been run when these labels were written.
 
 ## Labels
 

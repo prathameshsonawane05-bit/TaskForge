@@ -34,6 +34,7 @@ def render_json(report: FunnelReport) -> str:
     payload: dict[str, object] = {
         "repo": report.full_name,
         "limit": report.limit,
+        "order": "created desc",
         "considered": report.considered,
     }
     payload.update(report.counts.model_dump())

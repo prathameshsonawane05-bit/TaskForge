@@ -1,8 +1,11 @@
 """Read closed pull requests from the REST API and count filter reasons.
 
 The limit is how many closed pull requests are read. It is not a cap on how
-many of those are accepted. Pagination follows Link headers. The search API
-is not used.
+many of those are accepted. The first list request asks for ``sort=created``
+and ``direction=desc``. Later pages use the Link ``rel=next`` URL. Pulls stay
+in the order the list response returns them. They are not sorted by
+``closed_at``, ``updated_at``, or number. Pagination follows Link headers.
+The search API is not used.
 """
 
 from dataclasses import dataclass
@@ -64,6 +67,7 @@ def format_report(report: FunnelReport) -> str:
     lines = [
         f"repo {report.full_name}",
         f"limit {report.limit}",
+        "order created desc",
         f"considered {report.considered}",
     ]
     for name, value in report.counts.model_dump().items():
@@ -115,7 +119,11 @@ def collect_closed_pulls(
     name: str,
     limit: int,
 ) -> tuple[list[PullPayload], bool]:
-    """Return up to `limit` closed pulls and whether older pulls were not read."""
+    """Return up to `limit` closed pulls and whether older pulls were not read.
+
+    The list order is the response order. This does not sort by ``closed_at``,
+    ``updated_at``, or pull number.
+    """
     url: str | None = closed_pulls_url(owner, name, page=1)
     pulls: list[PullPayload] = []
     cut_off = False
@@ -199,7 +207,15 @@ def fetch_pull_files(
 
 
 def closed_pulls_url(owner: str, name: str, *, page: int) -> str:
-    query = urlencode({"state": "closed", "per_page": str(PULLS_PER_PAGE), "page": str(page)})
+    query = urlencode(
+        {
+            "state": "closed",
+            "sort": "created",
+            "direction": "desc",
+            "per_page": str(PULLS_PER_PAGE),
+            "page": str(page),
+        }
+    )
     return f"{API_ROOT}/repos/{owner}/{name}/pulls?{query}"
 
 

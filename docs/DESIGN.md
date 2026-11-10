@@ -56,7 +56,7 @@ The first failure is the only reject reason.
 - `<owner>-<name>-<limit>.json`
 - `<owner>-<name>-<limit>.md`
 
-Both repeat the funnel counts: `repo`, `limit`, `considered`, every rejection count, `accepted`, and `older_prs_cut_off` (`yes` or `no`). `considered` must equal `accepted` plus the rejection counts. When it does not, the command writes neither file. A refused repository writes neither file. The report does not contain precision or recall.
+Both repeat the funnel fields: `repo`, `limit`, `order created desc`, `considered`, every rejection count, `accepted`, and `older_prs_cut_off` (`yes` or `no`). The closed list is ordered by created time, descending. Each pull stays in the order the list response returns it. The report does not add a timestamp for every pull request. `considered` must equal `accepted` plus the rejection counts. When it does not, the command writes neither file. A refused repository writes neither file. The report does not contain precision or recall.
 
 ## Limitations
 

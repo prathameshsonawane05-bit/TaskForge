@@ -70,6 +70,8 @@ def test_json_and_markdown_contain_the_same_numbers(tmp_path: Path) -> None:
         assert payload[name] == value
         assert f"{name} {value}" in text
     assert payload["repo"] == "pallets/itsdangerous"
+    assert payload["order"] == "created desc"
+    assert "order created desc" in text
     assert payload["older_prs_cut_off"] == "yes"
     assert "older_prs_cut_off yes" in text
     assert "repo pallets/itsdangerous" in text

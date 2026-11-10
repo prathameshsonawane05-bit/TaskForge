@@ -77,6 +77,8 @@ class PullPayload(BaseModel):
     title: str = ""
     body: str | None = None
     merged_at: str | None = None
+    created_at: str | None = None
+    closed_at: str | None = None
     changed_files: int | None = None
     additions: int | None = None
     deletions: int | None = None
