@@ -184,6 +184,7 @@ class PullPackageResult:
     number: int
     repo_refusal: CheckResult | None = None
     filter_reason: FilterReason | None = None
+    package_reason: str | None = None
     report: GateReport | None = None
     quality: QualityReport | None = None
     directory: Path | None = None
@@ -244,6 +245,8 @@ def format_pull_package(result: PullPackageResult) -> str:
         return _refused_line(result.full_name, result.number, result.repo_refusal)
     if result.filter_reason is not None:
         return f"refused {result.full_name}#{result.number} reason={result.filter_reason.value}"
+    if result.package_reason is not None:
+        return f"refused {result.full_name}#{result.number} reason={result.package_reason}"
     report = result.report
     if report is None:
         raise ForgeError(
@@ -293,10 +296,24 @@ def _package_accepted(
                 "Accepted repository produced no pull report.",
                 reason=ReasonCode.INTERNAL,
             )
+        if reason in {FilterReason.BINARY, FilterReason.LOCKFILE}:
+            return PullPackageResult(
+                full_name=gate.full_name,
+                number=number,
+                package_reason="unsupported_file",
+                spdx_id=gate.spdx_id,
+            )
         return PullPackageResult(
             full_name=gate.full_name,
             number=number,
             filter_reason=reason,
+            spdx_id=gate.spdx_id,
+        )
+    if split.report.unsupported_files:
+        return PullPackageResult(
+            full_name=gate.full_name,
+            number=number,
+            package_reason="unsupported_file",
             spdx_id=gate.spdx_id,
         )
     owner, name = gate.full_name.split("/", maxsplit=1)

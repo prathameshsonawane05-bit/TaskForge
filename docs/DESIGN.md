@@ -47,7 +47,7 @@ The first failure is the only reject reason.
 
 `forge package` writes a task only when V1 through V5 accept and V6 through V8 are clean. The widget fixture stays rejected for `regression`. `forge package widget` and `forge package counter` are unchanged.
 
-`forge package-pull owner/name NUMBER` checks the allowlist and the SPDX license, then applies the current filters. A filter rejection writes nothing and exits 1 with that reason. An accepted pull request uses the existing split, the editable eval image, and the existing trial. The base commit is the first parent of the merge commit. The package is written under `output/` only when V1 through V5 accept and V6 through V8 are clean. It records the repository, the SPDX id, the pull-request URL, the issue URL, and the commit SHAs. Difficulty is an estimate.
+`forge package-pull owner/name NUMBER` checks the allowlist and the SPDX license, then applies the current filters. A filter rejection other than a binary file or a lockfile writes nothing and exits 1 with that reason. A changed file with no patch, a binary file, or a lockfile is `unsupported_file`. That refusal writes nothing and exits 1. It is not a funnel filter. An accepted pull request uses the existing split, the editable eval image, and the existing trial. A Python test file goes only in the test patch. Other Python files, and text files that ride along, go only in the solution patch. The base checkout is not modified by either patch. The base commit is the first parent of the merge commit. The package is written under `output/` only when V1 through V5 accept and V6 through V8 are clean. It records the repository, the SPDX id, the pull-request URL, the issue URL, and the commit SHAs. Difficulty is an estimate.
 
 ## Funnel report
 

@@ -1,13 +1,16 @@
-"""Split an accepted pull request into a source patch and a test patch.
+"""Split an accepted pull request into a solution patch and a test patch.
 
-Files that are neither source nor test are named and left out of both diffs.
-A missing patch on a source or test file is an error, not an empty diff.
-The linked issue is the first closing reference in the body, loaded with the
-same GitHub client the funnel uses.
+A Python test file is a hidden test and goes only in the test patch. Any other
+Python file is source and goes only in the solution patch. A text file that is
+not a test, including ``pyproject.toml``, ``setup.cfg``, and Markdown, is
+supporting and also goes in the solution patch. A file with no patch, a binary
+file, or a lockfile is unsupported. The linked issue is the first closing
+reference in the body, loaded with the same GitHub client the funnel uses.
 """
 
 import re
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path, PurePosixPath
 
 from pydantic import ValidationError
@@ -19,6 +22,8 @@ from forge.filters import (
     classify_pull,
     early_reason,
     first_closing_reference,
+    is_binary,
+    is_lockfile,
     is_source_file,
     is_test_file,
 )
@@ -29,6 +34,15 @@ from forge.models import CheckResult, FilterReason, IssuePayload, PullFilePayloa
 _NEEDS_QUOTES = re.compile(r'[\s"\\]')
 
 
+class FileRole(StrEnum):
+    """Where one changed file goes. Unsupported files are not patched."""
+
+    SOURCE = "source"
+    HIDDEN_TEST = "hidden_test"
+    SUPPORTING = "supporting"
+    UNSUPPORTED = "unsupported"
+
+
 @dataclass(frozen=True)
 class SplitReport:
     """One accepted pull request, split, with the issue GitHub returned."""
@@ -37,7 +51,8 @@ class SplitReport:
     number: int
     source_files: tuple[str, ...]
     test_files: tuple[str, ...]
-    other_files: tuple[str, ...]
+    supporting_files: tuple[str, ...]
+    unsupported_files: tuple[str, ...]
     source_patch: str
     test_patch: str
     issue_number: int
@@ -80,31 +95,50 @@ def run_split(
 
 def format_split(report: SplitReport) -> str:
     lines = [f"repo {report.full_name}", f"pull {report.number}"]
-    lines.extend(f"source {name}" for name in report.source_files)
-    lines.extend(f"test {name}" for name in report.test_files)
-    if report.other_files:
-        lines.extend(f"other {name}" for name in report.other_files)
-    else:
-        lines.append("other none")
+    lines.extend(_named("source", report.source_files))
+    lines.extend(_named("test", report.test_files))
+    lines.extend(_named("supporting", report.supporting_files))
+    lines.extend(_named("unsupported", report.unsupported_files))
     lines.append(f"issue {report.issue_url}")
     return "\n".join(lines)
 
 
+def classify_changed_file(item: PullFilePayload) -> FileRole:
+    """One role per changed file. A missing patch is unsupported, not empty."""
+    missing_patch = item.patch is None or item.patch == ""
+    if missing_patch or is_binary(item) or is_lockfile(item.filename):
+        return FileRole.UNSUPPORTED
+    if is_test_file(item.filename):
+        return FileRole.HIDDEN_TEST
+    if is_source_file(item.filename):
+        return FileRole.SOURCE
+    return FileRole.SUPPORTING
+
+
 def partition_files(
     files: list[PullFilePayload],
-) -> tuple[list[PullFilePayload], list[PullFilePayload], list[PullFilePayload]]:
-    """Source, test, and everything else. Test wins when a name matches both."""
+) -> tuple[
+    list[PullFilePayload],
+    list[PullFilePayload],
+    list[PullFilePayload],
+    list[PullFilePayload],
+]:
+    """Source, hidden test, supporting text, and unsupported files."""
     source: list[PullFilePayload] = []
     test: list[PullFilePayload] = []
-    other: list[PullFilePayload] = []
+    supporting: list[PullFilePayload] = []
+    unsupported: list[PullFilePayload] = []
     for item in files:
-        if is_test_file(item.filename):
+        role = classify_changed_file(item)
+        if role is FileRole.HIDDEN_TEST:
             test.append(item)
-        elif is_source_file(item.filename):
+        elif role is FileRole.SOURCE:
             source.append(item)
+        elif role is FileRole.SUPPORTING:
+            supporting.append(item)
         else:
-            other.append(item)
-    return source, test, other
+            unsupported.append(item)
+    return source, test, supporting, unsupported
 
 
 def render_patch(files: list[PullFilePayload]) -> str:
@@ -175,14 +209,15 @@ def _split(full_name: str, number: int, client: GitHubClient) -> SplitRun:
             reason=ReasonCode.INTERNAL,
         )
     issue = fetch_issue(client, reference.owner, reference.name, reference.number)
-    source, test, other = partition_files(files)
+    source, test, supporting, unsupported = partition_files(files)
     report = SplitReport(
         full_name=full_name,
         number=number,
         source_files=tuple(item.filename for item in source),
         test_files=tuple(item.filename for item in test),
-        other_files=tuple(item.filename for item in other),
-        source_patch=render_patch(source),
+        supporting_files=tuple(item.filename for item in supporting),
+        unsupported_files=tuple(item.filename for item in unsupported),
+        source_patch=render_patch([*source, *supporting]),
         test_patch=render_patch(test),
         issue_number=issue.number,
         issue_url=issue.html_url,
@@ -212,6 +247,12 @@ def fetch_issue(client: GitHubClient, owner: str, name: str, number: int) -> Iss
             reason=ReasonCode.GITHUB_ERROR,
         )
     return payload
+
+
+def _named(label: str, names: tuple[str, ...]) -> list[str]:
+    if not names:
+        return [f"{label} none"]
+    return [f"{label} {name}" for name in names]
 
 
 def _reject_bad_path(path: str) -> None:

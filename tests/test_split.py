@@ -13,8 +13,15 @@ from forge.cli import app
 from forge.errors import ForgeError
 from forge.filters import first_closing_reference
 from forge.github import build_http_client
-from forge.models import PullFilePayload
-from forge.split import partition_files, render_file_diff, run_split
+from forge.models import FilterReason, PullFilePayload
+from forge.split import (
+    FileRole,
+    classify_changed_file,
+    partition_files,
+    render_file_diff,
+    render_patch,
+    run_split,
+)
 from tests.fakes import make_client, repository_body, write_project
 
 TOKEN = "ghp_FAKE_TOKEN_SHOULD_NOT_LEAK_12345"
@@ -124,7 +131,7 @@ def test_rejected_pull_does_not_fetch_files(tmp_path: Path) -> None:
     assert "/repos/acme/widgets/issues/12" not in urls
 
 
-def test_other_file_is_left_out_and_patches_apply(tmp_path: Path) -> None:
+def test_supporting_text_goes_only_in_the_solution_patch(tmp_path: Path) -> None:
     files = [
         PullFilePayload(filename="pkg/widget.py", status="modified", patch=SOURCE_HUNK),
         PullFilePayload(
@@ -136,38 +143,100 @@ def test_other_file_is_left_out_and_patches_apply(tmp_path: Path) -> None:
         PullFilePayload(filename="tests/test_widget.py", status="modified", patch=TEST_HUNK),
         PullFilePayload(filename="README.md", status="modified", patch=OTHER_HUNK),
     ]
-    source, test, other = partition_files(files)
-    assert [item.filename for item in other] == ["README.md"]
-    source_patch = render_file_diff(source[0]) + render_file_diff(source[1])
-    test_patch = render_file_diff(test[0])
-    assert "README.md" not in source_patch
+    source, test, supporting, unsupported = partition_files(files)
+    assert [item.filename for item in supporting] == ["README.md"]
+    assert unsupported == []
+    source_patch = render_patch([*source, *supporting])
+    test_patch = render_patch(test)
+    assert "README.md" in source_patch
     assert "README.md" not in test_patch
+    assert "tests/test_widget.py" not in source_patch
+    assert "pkg/widget.py" not in test_patch
     assert "rename from pkg/old.py" in source_patch
     assert "rename to pkg/renamed.py" in source_patch
-    assert "diff --git a/pkg/widget.py b/pkg/widget.py" in source_patch
-    assert "--- a/pkg/old.py" in source_patch
-    assert "+++ b/pkg/renamed.py" in source_patch
+    _assert_base_stays_free(tmp_path, source_patch, test_patch)
 
-    repo = tmp_path / "repo"
-    (repo / "pkg").mkdir(parents=True)
-    (repo / "tests").mkdir()
-    (repo / "pkg" / "widget.py").write_text("hello\n", encoding="utf-8")
-    (repo / "pkg" / "old.py").write_text("old\n", encoding="utf-8")
-    (repo / "tests" / "test_widget.py").write_text("assert False\n", encoding="utf-8")
-    (repo / "README.md").write_text("readme\n", encoding="utf-8")
-    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
-    solution = tmp_path / "solution.patch"
-    tests = tmp_path / "test.patch"
-    solution.write_text(source_patch, encoding="utf-8")
-    tests.write_text(test_patch, encoding="utf-8")
-    checked = subprocess.run(
-        ["git", "apply", "--check", str(solution), str(tests)],
-        cwd=repo,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    assert checked.returncode == 0, checked.stderr
+
+def test_pyproject_toml_is_supporting_and_stays_out_of_the_test_patch(tmp_path: Path) -> None:
+    toml_hunk = "@@ -1 +1 @@\n-name = 'old'\n+name = 'new'\n"
+    files = [
+        PullFilePayload(filename="pkg/widget.py", status="modified", patch=SOURCE_HUNK),
+        PullFilePayload(filename="pyproject.toml", status="modified", patch=toml_hunk),
+        PullFilePayload(filename="setup.cfg", status="modified", patch=toml_hunk),
+        PullFilePayload(filename="tests/test_widget.py", status="modified", patch=TEST_HUNK),
+    ]
+    source, test, supporting, unsupported = partition_files(files)
+    assert [item.filename for item in supporting] == ["pyproject.toml", "setup.cfg"]
+    assert unsupported == []
+    solution = render_patch([*source, *supporting])
+    tests = render_patch(test)
+    assert "pyproject.toml" in solution
+    assert "setup.cfg" in solution
+    assert "tests/test_widget.py" not in solution
+    assert "pyproject.toml" not in tests
+    assert "pkg/widget.py" not in tests
+    repo = _base_repo(tmp_path)
+    (repo / "pyproject.toml").write_text("name = 'old'\n", encoding="utf-8")
+    (repo / "setup.cfg").write_text("name = 'old'\n", encoding="utf-8")
+    _assert_base_stays_free(tmp_path, solution, tests, repo=repo)
+
+
+def test_renamed_source_file_is_only_in_the_solution_patch(tmp_path: Path) -> None:
+    files = [
+        PullFilePayload(
+            filename="pkg/renamed.py",
+            status="renamed",
+            previous_filename="pkg/old.py",
+            patch=RENAME_HUNK,
+        ),
+        PullFilePayload(filename="tests/test_widget.py", status="modified", patch=TEST_HUNK),
+    ]
+    source, test, supporting, unsupported = partition_files(files)
+    assert [item.filename for item in source] == ["pkg/renamed.py"]
+    assert supporting == []
+    assert unsupported == []
+    solution = render_patch(source)
+    tests = render_patch(test)
+    assert "rename from pkg/old.py" in solution
+    assert "rename to pkg/renamed.py" in solution
+    assert "pkg/old.py" not in tests
+    assert "pkg/renamed.py" not in tests
+    assert "tests/test_widget.py" not in solution
+    _assert_base_stays_free(tmp_path, solution, tests)
+
+
+def test_deleted_test_file_is_only_in_the_test_patch(tmp_path: Path) -> None:
+    deleted = "@@ -1 +0,0 @@\n-assert False\n"
+    files = [
+        PullFilePayload(filename="pkg/widget.py", status="modified", patch=SOURCE_HUNK),
+        PullFilePayload(filename="tests/test_old.py", status="removed", patch=deleted),
+    ]
+    source, test, supporting, unsupported = partition_files(files)
+    assert [item.filename for item in test] == ["tests/test_old.py"]
+    assert supporting == []
+    assert unsupported == []
+    solution = render_patch(source)
+    tests = render_patch(test)
+    assert "deleted file mode 100644" in tests
+    assert "tests/test_old.py" in tests
+    assert "tests/test_old.py" not in solution
+    assert "pkg/widget.py" not in tests
+    repo = _base_repo(tmp_path)
+    (repo / "tests" / "test_old.py").write_text("assert False\n", encoding="utf-8")
+    _assert_base_stays_free(tmp_path, solution, tests, repo=repo)
+
+
+def test_missing_patch_binary_and_lockfile_are_unsupported() -> None:
+    missing = PullFilePayload(filename="notes.txt", patch=None)
+    binary = PullFilePayload(filename="assets/logo.png", patch="not-a-diff\n", binary=True)
+    lock = PullFilePayload(filename="uv.lock", status="modified", patch="@@\n+lock\n")
+    assert classify_changed_file(missing) is FileRole.UNSUPPORTED
+    assert classify_changed_file(binary) is FileRole.UNSUPPORTED
+    assert classify_changed_file(lock) is FileRole.UNSUPPORTED
+    _source, _test, supporting, unsupported = partition_files([missing, binary, lock])
+    assert supporting == []
+    assert [item.filename for item in unsupported] == ["notes.txt", "assets/logo.png", "uv.lock"]
+    assert "unsupported_file" not in {reason.value for reason in FilterReason}
 
 
 def test_missing_patch_is_an_error_not_an_empty_diff() -> None:
@@ -177,6 +246,51 @@ def test_missing_patch_is_an_error_not_an_empty_diff() -> None:
     assert "no patch" in message
     assert message != ""
     assert caught.value.reason == "github_error"
+
+
+def _base_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    (repo / "pkg").mkdir(parents=True)
+    (repo / "tests").mkdir()
+    (repo / "pkg" / "widget.py").write_text("hello\n", encoding="utf-8")
+    (repo / "pkg" / "old.py").write_text("old\n", encoding="utf-8")
+    (repo / "tests" / "test_widget.py").write_text("assert False\n", encoding="utf-8")
+    (repo / "README.md").write_text("readme\n", encoding="utf-8")
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    return repo
+
+
+def _assert_base_stays_free(
+    tmp_path: Path,
+    solution_text: str,
+    test_text: str,
+    *,
+    repo: Path | None = None,
+) -> None:
+    checkout = repo if repo is not None else _base_repo(tmp_path)
+    before = {
+        path.relative_to(checkout).as_posix(): path.read_text(encoding="utf-8")
+        for path in checkout.rglob("*")
+        if path.is_file() and ".git" not in path.parts
+    }
+    solution = tmp_path / "solution.patch"
+    tests = tmp_path / "test.patch"
+    solution.write_text(solution_text, encoding="utf-8")
+    tests.write_text(test_text, encoding="utf-8")
+    checked = subprocess.run(
+        ["git", "apply", "--check", str(solution), str(tests)],
+        cwd=checkout,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert checked.returncode == 0, checked.stderr
+    after = {
+        path.relative_to(checkout).as_posix(): path.read_text(encoding="utf-8")
+        for path in checkout.rglob("*")
+        if path.is_file() and ".git" not in path.parts
+    }
+    assert after == before
 
 
 def _reference_handler(
@@ -263,6 +377,7 @@ def test_cli_split_prints_files_and_issue_url(
     assert "source pkg/widget.py" in result.stdout
     assert "source pkg/renamed.py" in result.stdout
     assert "test tests/test_widget.py" in result.stdout
-    assert "other README.md" in result.stdout
+    assert "supporting README.md" in result.stdout
+    assert "unsupported none" in result.stdout
     assert "issue https://github.com/acme/widgets/issues/12" in result.stdout
     assert TOKEN not in text
