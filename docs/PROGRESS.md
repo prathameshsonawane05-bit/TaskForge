@@ -2386,3 +2386,61 @@ The printed gate count is still the number of repeats, not the number of contain
 
 Next stage:
 Improvement stage 5 was not started.
+
+## Improvement stage 5: clean checkout before build (commit 8866d2d608bfcc81a18171480cd258a184f3c170)
+
+What was built:
+Before this change, `_checkout` reused `data/clones/<owner>/<name>`. When that directory existed it fetched origin and checked out the SHA. It did not read the origin URL. `git checkout` left untracked files, and the eval image copied the directory.
+
+Before a fetch, the origin URL must now be exactly `https://github.com/<owner>/<name>.git`. Any other URL is a sandbox error, and `docker build` is not started. After the SHA is checked out, that commit is reset and untracked files are removed. HEAD must equal the requested SHA, and `git status --porcelain` must be empty, before the image build. The docker build environment does not contain `GITHUB_TOKEN`. The run stays on `--network none`, `512m`, and `1` CPU, with one read-only patch mount. The 30 second limit was not raised.
+
+`docs/DESIGN.md` states the residual risks in these words: the build has network and runs the checkout's installer; the container runs as root with a writable filesystem; the token is removed from the build and run environment. The sandbox is not a complete security boundary.
+
+`forge package-pull` was not run on `pallets/click` 3858. No upstream repository code was run on the host. No filter or evaluation label changed.
+
+Commands run and their real output:
+
+`.venv/bin/ruff check forge tests && .venv/bin/mypy && .venv/bin/pytest`
+
+```
+All checks passed!
+Success: no issues found in 38 source files
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/shubhambaviskar/Desktop/TaskForge
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 168 items
+
+tests/test_allowlist.py ....                                             [  2%]
+tests/test_check.py ..............                                       [ 10%]
+tests/test_ci.py .                                                       [ 11%]
+tests/test_cli.py .........                                              [ 16%]
+tests/test_config.py ......                                              [ 20%]
+tests/test_filters.py ..................................                 [ 40%]
+tests/test_funnel.py ..........                                          [ 46%]
+tests/test_gates.py .............                                        [ 54%]
+tests/test_git_hygiene.py ....                                           [ 56%]
+tests/test_github.py .....................                               [ 69%]
+tests/test_outcomes.py .......                                           [ 73%]
+tests/test_package_pull.py ......                                        [ 76%]
+tests/test_quality.py ............                                       [ 83%]
+tests/test_report.py ...                                                 [ 85%]
+tests/test_sandbox.py ............                                       [ 92%]
+tests/test_split.py ............                                         [100%]
+
+============================= 168 passed in 3.31s ==============================
+```
+
+Bugs found and fixed:
+An existing clone could point at another remote, and an untracked file left by `git checkout` was copied into the image. A fixture clone with `stolen.py` no longer contains that file when `docker build` starts. A clone whose origin is `https://github.com/evil/name.git` is refused before fetch and before the build.
+
+Files changed:
+`forge/sandbox.py`, `tests/test_sandbox.py`, `docs/DESIGN.md`.
+
+Decisions and open questions:
+`git clean -fd` removes untracked files and directories. Ignored files are left in place, and `git status --porcelain` does not list them. The fetch in the fixture test is not sent to GitHub. `AGENTS.md` stayed unstaged.
+
+Next stage:
+Improvement stage 6 was not started.
