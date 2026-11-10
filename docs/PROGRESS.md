@@ -2330,3 +2330,59 @@ The funnel still rejects a binary file as `binary` and a lockfile as `lockfile`.
 
 Next stage:
 Improvement stage 4 was not started.
+
+## Improvement stage 4: separate trial containers (commit 333ff76a657216348a766cd33c5b3d080b493624)
+
+What was built:
+Before this change, `run_trial_container` ran `TRIAL_SCRIPT` once. That script applied the test patch, ran pytest, applied the solution in the same container, and ran pytest again. A file created by the first pytest stayed on disk for the second pytest.
+
+The baseline and the solved pytest now run in two containers started from the same image. The baseline container applies the test patch only. It checks that the solution patch applies to the base and does not apply the solution. The solved container starts from the image again, applies the test patch, and then applies the solution. Each container is removed when its pytest exits. The three gate repeats are three baseline containers and three solved containers. A repeat that fails an early gate stops after its baseline container and its solved container. The 30 second limit was not raised. It still sums every container's wall time, because each recorded repeat includes both of its containers.
+
+`forge package-pull` was not run on `pallets/click` 3858. No upstream repository's tests were run on the host.
+
+Commands run and their real output:
+
+`.venv/bin/ruff check forge tests && .venv/bin/mypy && .venv/bin/pytest`
+
+```
+All checks passed!
+Success: no issues found in 38 source files
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/shubhambaviskar/Desktop/TaskForge
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 166 items
+
+tests/test_allowlist.py ....                                             [  2%]
+tests/test_check.py ..............                                       [ 10%]
+tests/test_ci.py .                                                       [ 11%]
+tests/test_cli.py .........                                              [ 16%]
+tests/test_config.py ......                                              [ 20%]
+tests/test_filters.py ..................................                 [ 40%]
+tests/test_funnel.py ..........                                          [ 46%]
+tests/test_gates.py .............                                        [ 54%]
+tests/test_git_hygiene.py ....                                           [ 57%]
+tests/test_github.py .....................                               [ 69%]
+tests/test_outcomes.py .......                                           [ 74%]
+tests/test_package_pull.py ......                                        [ 77%]
+tests/test_quality.py ............                                       [ 84%]
+tests/test_report.py ...                                                 [ 86%]
+tests/test_sandbox.py ..........                                         [ 92%]
+tests/test_split.py ............                                         [100%]
+
+============================= 166 passed in 2.54s ==============================
+```
+
+Bugs found and fixed:
+The old trial script kept the baseline pytest's files for the solved pytest. The two pytest runs no longer share a writable tree. A temporary fixture writes `leak.txt` during the baseline pytest. That file makes a later pytest fail if it is still present. The solved pytest starts without `leak.txt`, and its pass comes from the solution.
+
+Files changed:
+`forge/outcomes.py`, `forge/gates.py`, `tests/test_outcomes.py`, `tests/test_gates.py`, `docs/DESIGN.md`.
+
+Decisions and open questions:
+The printed gate count is still the number of repeats, not the number of containers. One repeat's elapsed time is the wall time of its baseline container and its solved container. `GATE_RUNTIME_LIMIT_SECONDS` stays 30. No filter, label, or other gate threshold changed. `AGENTS.md` stayed unstaged.
+
+Next stage:
+Improvement stage 5 was not started.
