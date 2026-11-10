@@ -129,10 +129,8 @@ def format_quality(report: QualityReport) -> str:
         lines.append("v6 unfair")
         for test_id in report.unfair:
             lines.append(f"  {test_id}")
-    elif len({kind for _test_id, kind in report.failures}) == 1 and report.failures:
-        lines.append(f"v6 {report.failures[0][1]}")
     else:
-        lines.append("v6 other")
+        lines.append(f"v6 {_kind_header(report.failures)}")
     for test_id, kind in report.failures:
         lines.append(f"  {test_id} {kind}")
     if report.leaked_line is None:
@@ -147,6 +145,20 @@ def format_quality(report: QualityReport) -> str:
         for message in report.hidden:
             lines.append(f"missing {message}")
     return "\n".join(lines)
+
+
+def _kind_header(failures: tuple[tuple[str, str], ...]) -> str:
+    """Name each distinct kind in the order it first appears.
+
+    ``other`` is one kind. It is not a label for a mix of kinds.
+    """
+    kinds: list[str] = []
+    for _test_id, kind in failures:
+        if kind not in kinds:
+            kinds.append(kind)
+    if not kinds:
+        return "none"
+    return ", ".join(kinds)
 
 
 def _names_signature(instruction: str, failure_text: str) -> bool:

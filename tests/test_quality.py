@@ -10,9 +10,12 @@ from forge.package import build_instruction, package_fixture
 from forge.quality import (
     FAIL_ASSERTION,
     FAIL_IMPORT,
+    FAIL_OTHER,
+    QualityReport,
     check_quality,
     classify_failure,
     exact_error_messages,
+    format_quality,
     leaked_line,
 )
 from forge.sandbox import CommandResult
@@ -157,6 +160,31 @@ def test_return_value_assert_is_not_an_error_message() -> None:
     assert exact_error_messages(test_patch) == ()
     equality = 'assert str(exc) == "missing value"\n'
     assert exact_error_messages(equality) == ("missing value",)
+
+
+def test_mixed_failure_kinds_are_named() -> None:
+    report = QualityReport(
+        failures=(
+            ("tests/test_a.py::test_one", FAIL_ASSERTION),
+            ("tests/test_b.py::test_two", FAIL_IMPORT),
+        ),
+        unfair=(),
+        leaked_line=None,
+        hidden=(),
+    )
+    header = format_quality(report).splitlines()[0]
+    assert header == "v6 assertion, import_or_attribute"
+    assert header != "v6 other"
+
+
+def test_a_single_other_failure_keeps_that_name() -> None:
+    report = QualityReport(
+        failures=(("tests/test_a.py::test_one", FAIL_OTHER),),
+        unfair=(),
+        leaked_line=None,
+        hidden=(),
+    )
+    assert format_quality(report).splitlines()[0] == "v6 other"
 
 
 def test_assertion_failure_is_not_unfair() -> None:
