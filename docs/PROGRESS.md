@@ -969,3 +969,117 @@ The funnel repo and limit were `pallets/click` and 30, chosen before the run. Ac
 
 Next stage:
 Stage 7: quality checks V6 to V8, instruction builder, and task packager. Waiting for "next".
+
+## Stage 7: Quality checks and the sample package (commit 174ccd796ac4e528fcf83a9dac757a621316a6dc)
+
+What was built:
+`forge package` runs the stage 6 gates and writes a task only when they accept. The widget fixture was not edited. `forge package widget` still stops at `regression` and writes nothing. The sample is the counter fixture, at `output/sample/local-counter/`. Fixture commits now set `GIT_AUTHOR_DATE` and `GIT_COMMITTER_DATE` to `2020-01-01T00:00:00Z`, so the parent SHA does not change between runs. A fresh `forge gates counter` printed the same base commit as `task.json`.
+
+The instruction is the short issue text stored with the counter fixture. It describes the behavior. It does not paste the solution. V6 classifies each fail-to-pass failure from the before run as `assertion`, `import_or_attribute`, or `other`. An import or attribute failure is `unfair` unless the instruction names the missing function and a signature. V7 compares each added source line from `solution.patch`, excluding diff headers, with a whole instruction line. V8 requires a quoted `pytest.raises` match, or a quoted equality on exception text, to appear in the instruction. `assert value() == 1` is not an error message. The labeled evaluation was not started.
+
+A substring check would have flagged the instruction line `value() should return 1.` because that line contains the text `return 1`. That match is wrong. The added source line is `return 1` by itself. The checker requires the stripped instruction line to equal that source line, so the sentence is not a leak.
+
+The sample is a local fixture written to pass. `license`, `pr_url`, and `issue_url` are `no upstream`. There is no invented pull request, issue URL, or SPDX license. `difficulty_signals` says the difficulty is an estimate and that this task was not run against an agent.
+
+`/output/*` ignores one path segment, and `!/output/sample/` puts that directory back. `git check-ignore` on the untracked `output/sample/local-counter/task.json` exited 1, so the ignore rule was not hiding the sample and was not changed. A test fails if those sample files are untracked. The existing test still fails if `.env` is tracked.
+
+Commands run and their real output:
+
+`.venv/bin/ruff check forge tests`
+
+```
+All checks passed!
+```
+
+`.venv/bin/mypy`
+
+```
+Success: no issues found in 34 source files
+```
+
+`.venv/bin/pytest`
+
+```
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/shubhambaviskar/Desktop/TaskForge
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 142 items
+
+tests/test_allowlist.py ....                                             [  2%]
+tests/test_check.py ..............                                       [ 12%]
+tests/test_cli.py .........                                              [ 19%]
+tests/test_config.py ......                                              [ 23%]
+tests/test_filters.py ..................................                 [ 47%]
+tests/test_funnel.py ....                                                [ 50%]
+tests/test_gates.py .............                                        [ 59%]
+tests/test_git_hygiene.py ....                                           [ 61%]
+tests/test_github.py .....................                               [ 76%]
+tests/test_outcomes.py .....                                             [ 80%]
+tests/test_quality.py ..........                                         [ 87%]
+tests/test_sandbox.py ..........                                         [ 94%]
+tests/test_split.py ........                                             [100%]
+
+============================= 142 passed in 2.07s ==============================
+```
+
+`.venv/bin/forge funnel pydantic/pydantic --limit 30` (process status 0). The repo and the limit were chosen before this run.
+
+```
+repo pydantic/pydantic
+limit 30
+considered 30
+not_merged 12
+revert 0
+too_many_files 3
+too_many_lines 0
+unknown_size 0
+binary 0
+lockfile 4
+docs_only 2
+missing_source_or_test 3
+no_linked_issue 6
+accepted 0
+older_prs_cut_off yes
+```
+
+Accepted was 0. The filters were left as they were, and no pull request was packaged.
+
+`.venv/bin/forge package widget` (process status 1)
+
+```
+repo local/widget
+commit bca1b0b89b4586655785c20cec3a3f00400f388e
+rejected regression
+packaged no
+```
+
+`.venv/bin/forge package counter` (process status 0)
+
+```
+repo local/counter
+commit c7c4e41913720631800d0f647185c5af60a81cc5
+rejected none
+packaged /Users/shubhambaviskar/Desktop/TaskForge/output/sample/local-counter
+v6 assertion
+  tests/test_value.py::test_value assertion
+v7 clean
+v8 clean
+```
+
+`.venv/bin/forge gates counter` (process status 0) printed `commit c7c4e41913720631800d0f647185c5af60a81cc5`, the same value as `base_commit` in the sample. The three runs agreed. Total time was 3.308 seconds, under the 30 second limit. A byte scan of these outputs found no copy of the token. Python on the host is 3.11.14 arm64.
+
+Bugs found and fixed:
+- A substring leak check would treat `value() should return 1.` as the added line `return 1`. The checker now compares whole lines.
+- Fixture commit dates were not pinned, so the parent SHA changed on every prepare. Both author and committer dates are now fixed.
+
+Files changed:
+`forge/cli.py`, `forge/gates.py`, `forge/package.py`, `forge/quality.py`, `forge/widget_fixture.py`, `tests/test_git_hygiene.py`, `tests/test_quality.py`, `output/sample/local-counter/`.
+
+Decisions and open questions:
+The funnel repo and limit were `pydantic/pydantic` and 30, chosen before the run. Accepted was 0, so the filters were not changed and no allowlisted pull request was packaged. The sample task id is `local-counter`. The pre-existing uncommitted edit to `AGENTS.md` was left unstaged.
+
+Next stage:
+Stage 8: labeled evaluation. Waiting for "next".
