@@ -7,6 +7,8 @@ from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 
+from forge.errors import ForgeError
+from forge.models import ReasonCode
 from forge.outcomes import (
     BASELINE_SCRIPT,
     SOLVED_SCRIPT,
@@ -18,6 +20,7 @@ from forge.outcomes import (
 )
 from forge.sandbox import (
     DEFAULT_TIMEOUT_SECONDS,
+    OFFLINE_EDITABLE_INSTALL,
     CommandResult,
     build_eval_image,
     dockerfile_text,
@@ -291,24 +294,40 @@ def test_packaged_checkout_is_installed_after_copy(tmp_path: Path) -> None:
     )
     packaged_text = (tmp_path / "data" / "sandbox" / "eval.Dockerfile").read_text(encoding="utf-8")
     copy_at = packaged_text.index("COPY . /repo")
-    install_at = packaged_text.index("RUN pip install --no-cache-dir -e .")
+    install_at = packaged_text.index(OFFLINE_EDITABLE_INSTALL)
     assert install_at > copy_at
-    assert packaged_text.endswith("RUN pip install --no-cache-dir -e .\n")
+    assert packaged_text.endswith(OFFLINE_EDITABLE_INSTALL + "\n")
     assert "pip install click" not in packaged_text
     assert "pip install pytest" not in packaged_text
+    assert "--network=none" in packaged_text
+    assert "RUN pip install --no-cache-dir -e ." not in packaged_text
 
-    build_eval_image(
-        "acme",
-        "demo",
-        sha,
-        setup_only,
-        root=tmp_path,
-        executor=recorder,
-        base_env=env,
-        host_platform="linux/arm64",
+    builds_before = sum(
+        1 for args, _env, _timeout in recorder.calls if len(args) > 1 and args[1] == "build"
     )
+    try:
+        build_eval_image(
+            "acme",
+            "demo",
+            sha,
+            setup_only,
+            root=tmp_path,
+            executor=recorder,
+            base_env=env,
+            host_platform="linux/arm64",
+        )
+    except ForgeError as exc:
+        setup_error = exc
+    else:
+        raise AssertionError("setup.py without static dependencies was installed")
+    assert setup_error.reason is ReasonCode.SANDBOX_ERROR
+    builds_after = sum(
+        1 for args, _env, _timeout in recorder.calls if len(args) > 1 and args[1] == "build"
+    )
+    assert builds_after == builds_before
     setup_text = (tmp_path / "data" / "sandbox" / "eval.Dockerfile").read_text(encoding="utf-8")
-    assert setup_text.endswith("RUN pip install --no-cache-dir -e .\n")
+    assert setup_text == packaged_text
+    assert not setup_text.endswith("RUN pip install --no-cache-dir -e .\n")
 
     build_eval_image(
         "acme",
@@ -326,6 +345,91 @@ def test_packaged_checkout_is_installed_after_copy(tmp_path: Path) -> None:
         if args[1] == "build":
             assert "--network" not in args
             assert "--platform" not in args
+
+
+def test_static_names_are_installed_before_the_offline_line(tmp_path: Path) -> None:
+    write_project(tmp_path, f"GITHUB_TOKEN={TOKEN}\n", ["acme/demo"])
+    checkout = tmp_path / "named"
+    checkout.mkdir()
+    (checkout / "pyproject.toml").write_text(
+        "\n".join(
+            [
+                "[build-system]",
+                'requires = ["setuptools>=68"]',
+                'build-backend = "setuptools.build_meta"',
+                "",
+                "[project]",
+                'name = "demo"',
+                'version = "0.1.0"',
+                'dependencies = ["packaging>=21", "httpx[http2]>=0.27"]',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    dynamic = tmp_path / "dynamic"
+    dynamic.mkdir()
+    (dynamic / "pyproject.toml").write_text(
+        "\n".join(
+            [
+                "[project]",
+                'name = "demo"',
+                'version = "0.1.0"',
+                'dynamic = ["dependencies"]',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    sha = "b" * 40
+    recorder = Recorder()
+    env = {"PATH": "/usr/bin", "HOME": "/tmp", "GITHUB_TOKEN": TOKEN}
+    build_eval_image(
+        "acme",
+        "demo",
+        sha,
+        checkout,
+        root=tmp_path,
+        executor=recorder,
+        base_env=env,
+        host_platform="linux/arm64",
+    )
+    text = (tmp_path / "data" / "sandbox" / "eval.Dockerfile").read_text(encoding="utf-8")
+    prefetch = "RUN pip install --no-cache-dir setuptools packaging httpx"
+    copy_at = text.index("COPY . /repo")
+    assert text.index(prefetch) < copy_at
+    assert copy_at < text.index(OFFLINE_EDITABLE_INSTALL)
+    assert text.endswith(OFFLINE_EDITABLE_INSTALL + "\n")
+    offline_line = text.splitlines()[-1]
+    assert offline_line == OFFLINE_EDITABLE_INSTALL
+    assert "packaging" not in offline_line
+    assert "httpx" not in offline_line
+    assert "click" not in text
+    assert "pip install click" not in text
+    builds_before = sum(
+        1 for args, _env, _timeout in recorder.calls if len(args) > 1 and args[1] == "build"
+    )
+    try:
+        build_eval_image(
+            "acme",
+            "demo",
+            sha,
+            dynamic,
+            root=tmp_path,
+            executor=recorder,
+            base_env=env,
+            host_platform="linux/arm64",
+        )
+    except ForgeError as exc:
+        dynamic_error = exc
+    else:
+        raise AssertionError("a dynamic dependency table was installed")
+    assert dynamic_error.reason is ReasonCode.SANDBOX_ERROR
+    builds_after = sum(
+        1 for args, _env, _timeout in recorder.calls if len(args) > 1 and args[1] == "build"
+    )
+    assert builds_after == builds_before
+    assert (tmp_path / "data" / "sandbox" / "eval.Dockerfile").read_text(encoding="utf-8") == text
 
 
 class _FreshTree:

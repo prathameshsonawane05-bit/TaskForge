@@ -14,6 +14,7 @@ import os
 import platform
 import re
 import subprocess
+import tomllib
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -36,6 +37,11 @@ PATCH_TARGET = "/patch"
 PATCHES_TARGET = "/patches"
 _SHA = re.compile(r"^[0-9a-f]{40}$")
 _SECRET_KEYS = frozenset({"GITHUB_TOKEN", "GH_TOKEN", "GITHUB_PAT"})
+_PACKAGE_NAME = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$")
+OFFLINE_EDITABLE_INSTALL = (
+    "RUN --network=none pip install --no-cache-dir "
+    "--no-deps --no-build-isolation -e ."
+)
 
 
 @dataclass(frozen=True)
@@ -96,12 +102,13 @@ def dockerfile_text() -> str:
     return f"FROM {BASE_IMAGE}\nWORKDIR /repo\nCOPY . /repo\n"
 
 
-def eval_dockerfile_text(*, install_checkout: bool = False) -> str:
+def eval_dockerfile_text(packages: tuple[str, ...] | None = None) -> str:
     """Install git and pytest at build time. The run itself stays offline.
 
-    When ``install_checkout`` is true, ``pip install -e .`` runs after the copy.
-    That command installs the checkout and the dependencies its packaging
-    file declares. It does not name any other package.
+    ``packages`` is ``None`` when the checkout is not installed. A tuple is
+    the static package names, and it may be empty. Those names are installed
+    with network access before ``COPY``. The editable install after ``COPY``
+    has no network and does not name a package.
     """
     text = (
         f"FROM {BASE_IMAGE}\n"
@@ -110,16 +117,43 @@ def eval_dockerfile_text(*, install_checkout: bool = False) -> str:
         " && rm -rf /var/lib/apt/lists/* \\\n"
         " && pip install --no-cache-dir pytest\n"
         "WORKDIR /repo\n"
-        "COPY . /repo\n"
     )
-    if install_checkout:
-        text += "RUN pip install --no-cache-dir -e .\n"
+    if packages:
+        text += "RUN pip install --no-cache-dir " + " ".join(packages) + "\n"
+    text += "COPY . /repo\n"
+    if packages is not None:
+        text += OFFLINE_EDITABLE_INSTALL + "\n"
     return text
 
 
-def checkout_has_packaging(checkout: Path) -> bool:
-    """True when the checkout declares a package with pyproject.toml or setup.py."""
-    return (checkout / "pyproject.toml").is_file() or (checkout / "setup.py").is_file()
+def declared_packages(checkout: Path) -> tuple[str, ...] | None:
+    """Read static dependency names from ``pyproject.toml`` text.
+
+    ``None`` means the checkout has no ``pyproject.toml`` and no ``setup.py``.
+    A dynamic dependency table, or a ``setup.py`` with no static project
+    dependencies, is a sandbox error. The checkout is not executed.
+    """
+    pyproject = checkout / "pyproject.toml"
+    setup = checkout / "setup.py"
+    if not pyproject.is_file():
+        if setup.is_file():
+            raise ForgeError(
+                "A setup.py checkout has no static pyproject dependencies.",
+                reason=ReasonCode.SANDBOX_ERROR,
+            )
+        return None
+    dependencies, requires = _static_requirement_lists(pyproject.read_text(encoding="utf-8"))
+    if dependencies is None and setup.is_file():
+        raise ForgeError(
+            "A setup.py checkout has no static pyproject dependencies.",
+            reason=ReasonCode.SANDBOX_ERROR,
+        )
+    names: list[str] = []
+    for requirement in (*(requires or ()), *(dependencies or ())):
+        name = _requirement_name(requirement)
+        if name not in names:
+            names.append(name)
+    return tuple(names)
 
 
 def container_run_args(
@@ -282,11 +316,12 @@ def build_eval_image(
     base_env: Mapping[str, str] | None = None,
     host_platform: str | None = None,
 ) -> str:
-    """Build the eval image. The build may use the network. The run stays offline.
+    """Build the eval image. Declared packages may use the network. The run stays offline.
 
-    A checkout with ``pyproject.toml`` or ``setup.py`` is installed with
-    ``pip install -e .`` after the files are copied. A checkout without that
-    metadata keeps the git and pytest image.
+    Static ``project.dependencies`` and ``build-system.requires`` are installed
+    before the checkout is copied. The editable install after the copy has no
+    network. A checkout with no ``pyproject.toml`` and no ``setup.py`` keeps
+    the git and pytest image.
     """
     digest = _require_sha(sha)
     env = _prepared_env(root, base_env)
@@ -302,7 +337,7 @@ def build_eval_image(
         root,
         run,
         env,
-        text=eval_dockerfile_text(install_checkout=checkout_has_packaging(checkout)),
+        text=eval_dockerfile_text(declared_packages(checkout)),
         filename="eval.Dockerfile",
     )
     return tag
@@ -646,6 +681,83 @@ def _finish(
         )
     finally:
         _remove_container(run, opened.name, env, ignore_error=True)
+
+
+def _static_requirement_lists(text: str) -> tuple[list[str] | None, list[str]]:
+    """Return project dependencies and build-system requires.
+
+    A missing dependency list is ``None``. The file is parsed as TOML text.
+    """
+    try:
+        loaded = tomllib.loads(text)
+    except tomllib.TOMLDecodeError:
+        raise ForgeError(
+            "pyproject.toml could not be read.",
+            reason=ReasonCode.SANDBOX_ERROR,
+        ) from None
+    project = loaded.get("project")
+    dependencies: list[str] | None = None
+    if isinstance(project, dict):
+        dynamic = project.get("dynamic", [])
+        if not isinstance(dynamic, list) or any(not isinstance(item, str) for item in dynamic):
+            raise ForgeError(
+                "A dynamic dependency table cannot be installed offline.",
+                reason=ReasonCode.SANDBOX_ERROR,
+            )
+        if "dependencies" in dynamic:
+            raise ForgeError(
+                "A dynamic dependency table cannot be installed offline.",
+                reason=ReasonCode.SANDBOX_ERROR,
+            )
+        if "dependencies" in project:
+            raw = project["dependencies"]
+            if not isinstance(raw, list) or any(not isinstance(item, str) for item in raw):
+                raise ForgeError(
+                    "A dynamic dependency table cannot be installed offline.",
+                    reason=ReasonCode.SANDBOX_ERROR,
+                )
+            dependencies = list(raw)
+    elif project is not None:
+        raise ForgeError(
+            "pyproject.toml could not be read.",
+            reason=ReasonCode.SANDBOX_ERROR,
+        )
+    requires: list[str] = []
+    build = loaded.get("build-system")
+    if isinstance(build, dict) and "requires" in build:
+        raw_requires = build["requires"]
+        if not isinstance(raw_requires, list) or any(
+            not isinstance(item, str) for item in raw_requires
+        ):
+            raise ForgeError(
+                "build-system.requires is not a list of packages.",
+                reason=ReasonCode.SANDBOX_ERROR,
+            )
+        requires = list(raw_requires)
+    elif build is not None and not isinstance(build, dict):
+        raise ForgeError(
+            "pyproject.toml could not be read.",
+            reason=ReasonCode.SANDBOX_ERROR,
+        )
+    return dependencies, requires
+
+
+def _requirement_name(requirement: str) -> str:
+    text = requirement.split("#", 1)[0].split(";", 1)[0].strip()
+    if " @ " in text:
+        text = text.split(" @ ", 1)[0].strip()
+    name: list[str] = []
+    for char in text:
+        if char in "[ \t<>=!~":
+            break
+        name.append(char)
+    found = "".join(name)
+    if _PACKAGE_NAME.fullmatch(found) is None:
+        raise ForgeError(
+            "A dependency requirement did not name a package.",
+            reason=ReasonCode.SANDBOX_ERROR,
+        )
+    return found
 
 
 def _build_image(

@@ -92,7 +92,7 @@ pytest
 
 ## Docker
 
-`forge sandbox`, `forge outcomes`, `forge gates`, `forge package`, and `forge package-pull` need Docker. The Docker daemon must be able to mount the clone. A Docker daemon which cannot mount `/tmp` cannot use a clone under `/tmp`. Repository code runs only inside that sandbox. The container has no network, 512 MB of memory, one CPU, a timeout, and a read-only patch mount. The host does not run the repository's tests or setup. The eval image build may use the network. A checkout with `pyproject.toml` or `setup.py` is installed with `pip install -e .` after the files are copied. The widget and counter fixtures have no packaging metadata and keep the git and pytest image.
+`forge sandbox`, `forge outcomes`, `forge gates`, `forge package`, and `forge package-pull` need Docker. The Docker daemon must be able to mount the clone. A Docker daemon which cannot mount `/tmp` cannot use a clone under `/tmp`. Repository code runs only inside that sandbox. The container has no network, 512 MB of memory, one CPU, a timeout, and a read-only patch mount. The host does not run the repository's tests or setup. The eval image may use the network to install packages named in `pyproject.toml`. After the checkout is copied, `pip install -e .` has no network. A checkout with no `pyproject.toml` and no `setup.py`, including the widget and counter fixtures, keeps the git and pytest image. The checkout installer still runs as root during the build.
 
 ## Limitations
 
