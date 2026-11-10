@@ -1870,3 +1870,62 @@ A non-editable `pip install .` does not see a solution applied later to `/repo`.
 
 Next stage:
 None. This follow-up is done. The dashboard was not built.
+
+## Editable install follow-up (commit 8ea64b56e1d9ce1bb3ee4ad29d2555b94cc41460)
+
+What was built:
+A packaged checkout is now installed with `pip install -e .` after the files are copied. The dependencies stay the ones its packaging file declares. No other package is named. The widget and counter fixtures still have no packaging metadata and stay on the git and pytest image. The build may use the network. The run stays offline, at 512 MB, one CPU, the existing timeout, a read-only patch mount, and a 30 second total. No filter, rubric, label, or the 30 second limit was changed.
+
+Only pull 3858 was run again, at base `7944461a80b780d060899c8835acab3c273a04a6`. The editable install succeeded (`click-8.5.1.dev0`). Three fresh containers agreed. Total time was 21.707 seconds. Gates V1 through V5 accepted. V6 classified the one fail-to-pass failure as `other`, and V7 and V8 were clean. The package is `output/pallets-click-3858/` and is not committed. The API license is `BSD-3-Clause`. Difficulty is an estimate. 3781, 3769, and 3739 were not run.
+
+Commands run and their real output:
+
+`.venv/bin/ruff check forge tests && .venv/bin/mypy && .venv/bin/pytest`
+
+```
+All checks passed!
+Success: no issues found in 37 source files
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+collected 149 items
+============================= 149 passed in 2.03s ==============================
+```
+
+Pull 3858 through the editable eval image:
+
+```
+spdx BSD-3-Clause
+merge 86949d19b930ef68a45566544cb4b9508d895d0d
+head 22177f857a34e3c35ba957553853a37f23feb37e
+parent 7944461a80b780d060899c8835acab3c273a04a6
+issue https://github.com/pallets/click/issues/3822
+source src/click/types.py
+test tests/test_types/test_Path.py tests/typing/typing_path.py
+checkout /Users/shubhambaviskar/Desktop/TaskForge/data/clones/pallets/click
+image taskforge/pallets/click:7944461a80b780d060899c8835acab3c273a04a6
+run 1 elapsed 8.017 before 1 after 1 f2p 1 p2p 1661 still 9 regression 0 skipped 20
+run 2 elapsed 6.823 before 1 after 1 f2p 1 p2p 1661 still 9 regression 0 skipped 20
+run 3 elapsed 6.867 before 1 after 1 f2p 1 p2p 1661 still 9 regression 0 skipped 20
+total_elapsed 21.707
+limit_seconds 30
+rejected none
+v6 other
+  tests/test_types/test_Path.py::test_path_converted_type_parameter_at_runtime other
+v7 clean
+v8 clean
+packaged /Users/shubhambaviskar/Desktop/TaskForge/output/pallets-click-3858
+```
+
+The build log ended with `Successfully installed click-8.5.1.dev0`. The Dockerfile line is `RUN pip install --no-cache-dir -e .`.
+
+Bugs found and fixed:
+The previous non-editable install copied click into site-packages, so the solution applied to `/repo` was not imported. The editable install points at the checkout, and the same pull request then had one fail-to-pass test.
+
+Files changed:
+`forge/sandbox.py`, `tests/test_outcomes.py`, `README.md`, `docs/DESIGN.md`. The package under `output/pallets-click-3858/` is gitignored.
+
+Decisions and open questions:
+Nine tests still failed before and after the solution, and twenty were skipped. They did not reject the run. The one fail-to-pass test is `tests/test_types/test_Path.py::test_path_converted_type_parameter_at_runtime`. `AGENTS.md` stayed unstaged.
+
+Next stage:
+None. This follow-up is done. The dashboard was not built.
