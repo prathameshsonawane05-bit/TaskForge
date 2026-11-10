@@ -1,6 +1,6 @@
 # TaskForge
 
-TaskForge reads merged pull requests from allowlisted public Python repositories and turns a small one into a task: an instruction, a hidden test patch, and a reference solution. The only committed task is `output/sample/local-counter`.
+TaskForge reads merged pull requests from allowlisted public Python repositories and turns a small one into a task: an instruction, a test patch, and a reference solution. The committed public examples are `output/sample/local-counter`, `output/pallets-click-3781`, and `output/pallets-click-3769`. Each directory contains `solution/solution.patch` and `tests/test.patch`. The local counter was written to pass and has no upstream. The two Click directories are upstream-derived examples, not a blind evaluation set and not confidential grading tasks.
 
 ## Setup
 
@@ -69,16 +69,20 @@ A packaged pull request follows this path. The allowlist and the SPDX check acce
 
 ## Walkthrough
 
-These two commands use the local counter. They need Docker. They do not need a token.
+These two commands run the local counter fixture. The fixture includes its own solution and tests. They do not grade a hidden upstream task. They need Docker. They do not need a token.
 
 ```bash
 forge gates counter
 forge package counter
 ```
 
-## Committed task
+## Public examples
 
-`output/sample/local-counter` contains `instruction.md`, `solution/solution.patch`, `tests/test.patch`, `tests/config.json`, `task.json`, and `ATTRIBUTION.md`. `task.json` names the repository `local/counter`. Its license, pull-request URL, and issue URL are `no upstream`. The short funnel report beside these docs, `docs/funnel-report.md`, uses those `no upstream` values. It is not a GitHub window.
+`output/sample/local-counter`, `output/pallets-click-3781`, and `output/pallets-click-3769` are public. Each contains `instruction.md`, `solution/solution.patch`, `tests/test.patch`, `tests/config.json`, `task.json`, and `ATTRIBUTION.md`. The local counter was written to pass and has no upstream. Its `task.json` names the repository `local/counter`, and its license, pull-request URL, and issue URL are `no upstream`. The two Click directories are upstream-derived examples, not a blind evaluation set and not confidential grading tasks. Their test patches are in this repository. `docs/funnel-report.md` uses the local counter's `no upstream` values. It is not a GitHub window.
+
+## License
+
+This repository has no LICENSE file and no chosen SPDX license. An upstream example keeps the SPDX id recorded in its `task.json`. The Click examples record `BSD-3-Clause`.
 
 ## Checks
 
@@ -104,4 +108,4 @@ pytest
 - Three windows accepted none, so precision and recall are undefined: `psf/requests`, `pallets/itsdangerous`, and `encode/httpx`.
 - The click window was 4/4 and was labeled by the filter author.
 - This stage committed `pallets/click` 3781 and 3769. 3858 was not packaged because the gate rejected it as too slow. 3739 was not packaged because V7 leaked one solution line. Nine tests still failed and twenty were skipped. V6 recorded `other` on the pulls that reached quality. An agent command ran once. It was not logged in, it produced no edit, and it did not solve `pallets/click` 3781.
-- The committed tasks are `output/pallets-click-3781`, `output/pallets-click-3769`, and `output/sample/local-counter`. The sample has no upstream repository, and it was written to pass the gates.
+- `output/sample/local-counter`, `output/pallets-click-3781`, and `output/pallets-click-3769` are public examples. Each contains `solution/solution.patch` and `tests/test.patch`. The local counter was written to pass and has no upstream. The two Click directories are upstream-derived examples, not a blind evaluation set and not confidential grading tasks.
