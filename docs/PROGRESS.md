@@ -3960,3 +3960,131 @@ The local funnel report is not a GitHub window, so its counts are `no upstream`.
 
 Next stage:
 No further improvement stage was started.
+
+## Follow-up 1: offline editable install (commit efeade888c3c1b9ef0f37bb68c61fe3bc050dc0f)
+
+What was built:
+Before this change, `eval_dockerfile_text` copied the checkout and then ran `pip install -e .`. The docker build arguments had no `--network=none`, so that installer had network access and ran as root.
+
+`project.dependencies` and `build-system.requires` are now read from `pyproject.toml` as text. The checkout is not executed to discover them. Those named packages are installed in a networked `RUN` before `COPY`. After `COPY`, the editable install is `RUN --network=none pip install --no-cache-dir --no-deps --no-build-isolation -e .`. A dynamic dependency table, or a checkout that has `setup.py` and no static pyproject dependencies, is a sandbox error. There is no fallback to a networked `pip install -e .`. A checkout with no `pyproject.toml` and no `setup.py` stays on the git and pytest image. The offline line does not name click or any other package the checkout did not declare.
+
+`docs/DESIGN.md` says the checkout installer no longer has network access, and that it still runs as root during the build. The sandbox is not a complete security boundary.
+
+No filter, label, gate, or the 30 second limit changed. The nine still-failing tests and twenty skips stay as they are. `forge package-pull` was not run. `--platform linux/amd64` was not passed. No upstream repository code was run on the host. The token was not printed.
+
+Commands run and their real output:
+
+`.venv/bin/ruff check forge tests && .venv/bin/mypy && .venv/bin/pytest` (exit 0)
+
+```
+All checks passed!
+Success: no issues found in 40 source files
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/shubhambaviskar/Desktop/TaskForge
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 201 items
+
+tests/test_allowlist.py ....                                             [  1%]
+tests/test_check.py ..............                                       [  8%]
+tests/test_ci.py .                                                       [  9%]
+tests/test_cli.py .........                                              [ 13%]
+tests/test_config.py ......                                              [ 16%]
+tests/test_filters.py .............................................      [ 39%]
+tests/test_funnel.py ..........                                          [ 44%]
+tests/test_gates.py .............                                        [ 50%]
+tests/test_git_hygiene.py ....                                           [ 52%]
+tests/test_github.py .....................                               [ 63%]
+tests/test_outcomes.py ........                                          [ 67%]
+tests/test_package_pull.py ......                                        [ 70%]
+tests/test_publish.py ...........                                        [ 75%]
+tests/test_quality.py .....................                              [ 86%]
+tests/test_report.py ...                                                 [ 87%]
+tests/test_sandbox.py ............                                       [ 93%]
+tests/test_split.py ............                                         [ 99%]
+tests/test_wheel.py .                                                    [100%]
+
+============================= 201 passed in 3.47s ==============================
+```
+
+Docker was running. A temporary project with static dependencies was built from `data/followup1-static`, which the daemon can mount. `/tmp` was not used. The build log:
+
+```
+#0 building with "colima" instance using docker driver
+
+#1 [internal] load build definition from eval.Dockerfile
+#1 transferring dockerfile: 482B 0.0s done
+#1 DONE 0.1s
+
+#2 [internal] load metadata for docker.io/library/python:3.11-slim@sha256:07d4824036af339fa1b6ef769cc99d9c10a141769538b52b3b597c84f7a7b535
+#2 DONE 0.0s
+
+#3 [internal] load .dockerignore
+#3 transferring context:
+#3 transferring context: 2B done
+#3 DONE 0.0s
+
+#4 [1/6] FROM docker.io/library/python:3.11-slim@sha256:07d4824036af339fa1b6ef769cc99d9c10a141769538b52b3b597c84f7a7b535
+#4 DONE 0.0s
+
+#5 [2/6] RUN apt-get update  && apt-get install -y --no-install-recommends git  && rm -rf /var/lib/apt/lists/*  && pip install --no-cache-dir pytest
+#5 CACHED
+
+#6 [3/6] WORKDIR /repo
+#6 CACHED
+
+#7 [internal] load build context
+#7 transferring context: 469B 0.0s done
+#7 DONE 0.1s
+
+#8 [4/6] RUN pip install --no-cache-dir setuptools packaging
+#8 2.891 Requirement already satisfied: setuptools in /usr/local/lib/python3.11/site-packages (79.0.1)
+#8 2.891 Requirement already satisfied: packaging in /usr/local/lib/python3.11/site-packages (26.3)
+#8 2.933 WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv
+#8 3.075 
+#8 3.075 [notice] A new release of pip is available: 24.0 -> 26.3
+#8 3.075 [notice] To update, run: pip install --upgrade pip
+#8 DONE 3.1s
+
+#9 [5/6] COPY . /repo
+#9 DONE 0.0s
+
+#10 [6/6] RUN --network=none pip install --no-cache-dir --no-deps --no-build-isolation -e .
+#10 0.753 Obtaining file:///repo
+#10 0.755   Checking if build backend supports build_editable: started
+#10 1.154   Checking if build backend supports build_editable: finished with status 'done'
+#10 1.156   Preparing editable metadata (pyproject.toml): started
+#10 1.569   Preparing editable metadata (pyproject.toml): finished with status 'done'
+#10 1.574 Building wheels for collected packages: followup-demo
+#10 1.576   Building editable for followup-demo (pyproject.toml): started
+#10 1.690   Building editable for followup-demo (pyproject.toml): finished with status 'done'
+#10 1.691   Created wheel for followup-demo: filename=followup_demo-0.1.0-0.editable-py3-none-any.whl size=2726 sha256=16ca6679b3d669310ada5ea3466cb87786a515b6eedaa573689c182fb2450503
+#10 1.691   Stored in directory: /tmp/pip-ephem-wheel-cache-ivhtcjdk/wheels/4f/e9/65/15c564da49fdb6cb4db1e3bad74fd7b1c77e98bb7f89ae7cfa
+#10 1.693 Successfully built followup-demo
+#10 1.693 Installing collected packages: followup-demo
+#10 1.709 Successfully installed followup-demo-0.1.0
+#10 1.710 WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv
+#10 DONE 1.8s
+
+#11 exporting to image
+#11 exporting layers 0.0s done
+#11 writing image sha256:0586ae16cc72a92984eaacb7abe411f2081981a452cb8f317b262b2391884f2f done
+#11 naming to docker.io/taskforge/local/followup:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 0.0s done
+#11 DONE 0.1s
+```
+
+The image tag was `taskforge/local/followup:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`. The offline step installed `followup-demo-0.1.0`.
+
+Bugs found and fixed:
+None. A `setup.py` checkout with no static dependencies now raises before a build, instead of falling back to a networked install.
+
+Files changed:
+`forge/sandbox.py`, `tests/test_outcomes.py`, `docs/DESIGN.md`, `README.md`.
+
+Decisions and open questions:
+The declared-package `RUN` still has network access, and both pip steps still run as root. The editable install does not. `AGENTS.md` stayed unstaged.
+
+Next stage:
+Follow-up 2 was not started.
