@@ -155,6 +155,163 @@ def test_missing_exact_error_string_is_hidden() -> None:
     assert present.hidden == ()
 
 
+def test_multiline_match_is_not_ignored() -> None:
+    test_patch = '''\
+def test_value() -> None:
+    with pytest.raises(ValueError, match="""missing
+value"""):
+        value()
+'''
+    assert exact_error_messages(test_patch) == ("missing\nvalue",)
+    report = check_quality(
+        before_stdout=ASSERT_BEFORE,
+        fail_to_pass=("tests/test_value.py::test_value",),
+        instruction="The error says missing value.\n",
+        solution_patch=SOLUTION,
+        test_patch=test_patch,
+    )
+    assert report.hidden == ("missing\nvalue",)
+    assert report.clean is False
+    present = check_quality(
+        before_stdout=ASSERT_BEFORE,
+        fail_to_pass=("tests/test_value.py::test_value",),
+        instruction="The error says missing\nvalue when empty.\n",
+        solution_patch=SOLUTION,
+        test_patch=test_patch,
+    )
+    assert present.hidden == ()
+    assert present.clean is True
+
+
+def test_adjacent_string_constants_are_one_match() -> None:
+    test_patch = (
+        "def test_value() -> None:\n"
+        '    with pytest.raises(ValueError, match="missing" " value"):\n'
+        "        value()\n"
+    )
+    assert exact_error_messages(test_patch) == ("missing value",)
+
+
+def test_new_file_diff_keeps_a_triple_quoted_match() -> None:
+    test_patch = '''\
+diff --git a/tests/test_value.py b/tests/test_value.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_value.py
+@@ -0,0 +1,4 @@
++def test_value() -> None:
++    with pytest.raises(ValueError, match="""missing
++value"""):
++        value()
+'''
+    assert exact_error_messages(test_patch) == ("missing\nvalue",)
+
+
+def test_nonliteral_match_is_not_clean() -> None:
+    test_patch = (
+        "def test_value() -> None:\n"
+        "    with pytest.raises(ValueError, match=pattern):\n"
+        "        value()\n"
+    )
+    report = check_quality(
+        before_stdout=ASSERT_BEFORE,
+        fail_to_pass=("tests/test_value.py::test_value",),
+        instruction="nonliteral match\n",
+        solution_patch=SOLUTION,
+        test_patch=test_patch,
+    )
+    assert report.hidden == ("nonliteral match",)
+    assert report.clean is False
+    assert format_quality(report).splitlines()[-1] == "nonliteral match"
+
+
+def test_decorator_does_not_hide_a_constant_match() -> None:
+    test_patch = '''\
+import pytest
+
+@pytest.mark.parametrize("n", [1])
+def test_value(n: int) -> None:
+    with pytest.raises(ValueError, match="missing value"):
+        value(n)
+'''
+    assert exact_error_messages(test_patch) == ("missing value",)
+
+
+def test_unparsed_test_is_not_clean() -> None:
+    report = check_quality(
+        before_stdout=ASSERT_BEFORE,
+        fail_to_pass=("tests/test_value.py::test_value",),
+        instruction="unparsed test\n",
+        solution_patch=SOLUTION,
+        test_patch="def test_value(:\n    pass\n",
+    )
+    assert report.hidden == ("unparsed test",)
+    assert report.clean is False
+    assert format_quality(report).splitlines()[-1] == "unparsed test"
+
+
+def test_assertion_on_the_next_line_is_an_assertion() -> None:
+    before = (
+        "tests/test_keep.py::test_truth PASSED\n"
+        "tests/test_value.py::test_value FAILED\n"
+        "AssertionError: assert 0 == 1\n"
+        "tests/test_other.py::test_other FAILED\n"
+        "AssertionError: from the other test\n"
+    )
+    report = check_quality(
+        before_stdout=before,
+        fail_to_pass=("tests/test_value.py::test_value",),
+        instruction=build_instruction(COUNTER_ISSUE),
+        solution_patch=SOLUTION,
+        test_patch="def test_value() -> None:\n    assert value() == 1\n",
+    )
+    assert report.failures == (("tests/test_value.py::test_value", FAIL_ASSERTION),)
+    assert report.clean is True
+
+
+def test_import_error_wins_over_assertion() -> None:
+    before = (
+        "tests/test_new.py::test_add FAILED\n"
+        "AssertionError: assert False\n"
+        "AttributeError: module 'widget' has no attribute 'add'\n"
+        "tests/test_keep.py::test_truth PASSED\n"
+    )
+    report = check_quality(
+        before_stdout=before,
+        fail_to_pass=("tests/test_new.py::test_add",),
+        instruction="Implement add(left: int, right: int) -> int.\n",
+        solution_patch=SOLUTION,
+        test_patch="",
+    )
+    assert report.failures == (("tests/test_new.py::test_add", FAIL_IMPORT),)
+    assert report.unfair == ()
+
+
+def test_a_longer_name_does_not_satisfy_the_missing_function() -> None:
+    before = (
+        "tests/test_new.py::test_add FAILED\n"
+        "AttributeError: module 'widget' has no attribute 'value'\n"
+    )
+    missed = check_quality(
+        before_stdout=before,
+        fail_to_pass=("tests/test_new.py::test_add",),
+        instruction="Call myvalue(1).\n",
+        solution_patch=SOLUTION,
+        test_patch="",
+    )
+    assert missed.failures == (("tests/test_new.py::test_add", FAIL_IMPORT),)
+    assert missed.unfair == ("tests/test_new.py::test_add",)
+    named = check_quality(
+        before_stdout=before,
+        fail_to_pass=("tests/test_new.py::test_add",),
+        instruction="Call value(1).\n",
+        solution_patch=SOLUTION,
+        test_patch="",
+    )
+    assert named.unfair == ()
+    assert named.clean is True
+
+
 def test_return_value_assert_is_not_an_error_message() -> None:
     test_patch = "def test_value() -> None:\n    assert value() == 1\n"
     assert exact_error_messages(test_patch) == ()
