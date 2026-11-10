@@ -1929,3 +1929,89 @@ Nine tests still failed before and after the solution, and twenty were skipped. 
 
 Next stage:
 None. This follow-up is done. The dashboard was not built.
+
+## Package-pull follow-up (commit 177d68a19b5ac44afef09cf98e85724309505195)
+
+What was built:
+`forge package-pull owner/name NUMBER` checks the allowlist and the SPDX license, then applies the current filters. A filter rejection writes nothing and exits 1 with that reason. An accepted pull request uses the existing split, the editable eval image, the existing trial, gates V1 through V5, and V6 through V8. The base commit is the first parent of the merge commit. A package is written under `output/` only when the gates accept and V6 through V8 are clean. `forge package widget` and `forge package counter` are unchanged. `format_trial` prints `solution_absent yes` only when the trial output contains the line `SOLUTION_CHECK:absent`. Otherwise it prints `solution_absent no`. No filter, rubric, label, V6, V7, V8, or the 30 second limit was changed.
+
+Only `pallets/click` 3858 was run. The counts match the earlier run: one fail-to-pass test, 1661 pass-to-pass, 9 still failing, 20 skipped, `v6 other`, `v7 clean`, and `v8 clean`. The container times differ. The earlier total was 21.707 seconds (8.017, 6.823, 6.867). This total is 22.054 seconds (8.251, 6.702, 7.100). No gate was changed to make the times match. The package was rewritten at `output/pallets-click-3858/` and is not committed. The license is `BSD-3-Clause`. Difficulty is an estimate. 3781, 3769, and 3739 were not run.
+
+Commands run and their real output:
+
+`.venv/bin/ruff check forge tests && .venv/bin/mypy && .venv/bin/pytest`
+
+```
+All checks passed!
+Success: no issues found in 38 source files
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+collected 152 items
+============================= 152 passed in 1.89s ==============================
+```
+
+`.venv/bin/forge package-pull pallets/click 3858` (process status 0). The three runs listed the same fail-to-pass test, the same nine still-failing tests, and the same twenty skipped tests. The first run is shown in full. Runs 2 and 3 repeated those ids.
+
+```
+repo pallets/click
+pull 3858
+commit 7944461a80b780d060899c8835acab3c273a04a6
+image taskforge/pallets/click:7944461a80b780d060899c8835acab3c273a04a6
+limit_seconds 30
+runs 3
+rejected none
+run 1 elapsed 8.251 before 1 after 1
+run 1 f2p 1 p2p 1661 still 9 regression 0 skipped 20
+  f2p tests/test_types/test_Path.py::test_path_converted_type_parameter_at_runtime
+  still tests/test_chain.py::test_group_chaining
+  still tests/test_utils/test_echo_via_pager.py::test_echo_via_pager[test0-less]
+  still tests/test_utils/test_echo_via_pager.py::test_echo_via_pager[test1-less]
+  still tests/test_utils/test_echo_via_pager.py::test_echo_via_pager[test2-less]
+  still tests/test_utils/test_echo_via_pager.py::test_echo_via_pager[test3-less]
+  still tests/test_utils/test_echo_via_pager.py::test_echo_via_pager[test4-less]
+  still tests/test_utils/test_echo_via_pager.py::test_echo_via_pager[test7-less]
+  still tests/test_utils/test_echo_via_pager.py::test_echo_via_pager[test8-less]
+  still tests/test_utils/test_echo_via_pager.py::test_echo_via_pager[test9-less]
+  skipped tests/test_termui.py::test_getchar_special_key_windows[\x00-a]
+  skipped tests/test_termui.py::test_getchar_special_key_windows[\x00-b]
+  skipped tests/test_termui.py::test_getchar_special_key_windows[\xe0-c]
+  skipped tests/test_termui.py::test_getchar_windows[False-H]
+  skipped tests/test_termui.py::test_getchar_windows[False-\u5b57]
+  skipped tests/test_termui.py::test_getchar_windows[False-\xc0]
+  skipped tests/test_termui.py::test_getchar_windows[False-\xe0H]
+  skipped tests/test_termui.py::test_getchar_windows[False-\xe0R]
+  skipped tests/test_termui.py::test_getchar_windows[False-\xe9]
+  skipped tests/test_termui.py::test_getchar_windows[False-h]
+  skipped tests/test_termui.py::test_getchar_windows[True-H]
+  skipped tests/test_termui.py::test_getchar_windows[True-\u5b57]
+  skipped tests/test_termui.py::test_getchar_windows[True-\xc0]
+  skipped tests/test_termui.py::test_getchar_windows[True-\xe0H]
+  skipped tests/test_termui.py::test_getchar_windows[True-\xe0R]
+  skipped tests/test_termui.py::test_getchar_windows[True-\xe9]
+  skipped tests/test_termui.py::test_getchar_windows[True-h]
+  skipped tests/test_termui.py::test_getchar_windows_exceptions[\x03-KeyboardInterrupt]
+  skipped tests/test_termui.py::test_getchar_windows_exceptions[\x1a-EOFError]
+  skipped tests/test_testing.py::test_capture_fd_windows_error
+run 2 elapsed 6.702 before 1 after 1
+run 2 f2p 1 p2p 1661 still 9 regression 0 skipped 20
+run 3 elapsed 7.100 before 1 after 1
+run 3 f2p 1 p2p 1661 still 9 regression 0 skipped 20
+total_elapsed 22.054
+packaged /Users/shubhambaviskar/Desktop/TaskForge/output/pallets-click-3858
+v6 other
+  tests/test_types/test_Path.py::test_path_converted_type_parameter_at_runtime other
+v7 clean
+v8 clean
+```
+
+Bugs found and fixed:
+`format_trial` always printed `solution_absent yes`. It now prints `yes` only when the trial output contains the line `SOLUTION_CHECK:absent`.
+
+Files changed:
+`forge/cli.py`, `forge/package.py`, `forge/outcomes.py`, `tests/test_package_pull.py`, `tests/test_outcomes.py`, `README.md`, `docs/DESIGN.md`. The package under `output/pallets-click-3858/` is gitignored.
+
+Decisions and open questions:
+The classification matches the earlier run. The elapsed times do not, and the 30 second limit was left at 30. Nine tests still failed and twenty were skipped. `AGENTS.md` stayed unstaged.
+
+Next stage:
+None. This follow-up is done. The dashboard was not built.
