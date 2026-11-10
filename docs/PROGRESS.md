@@ -4751,3 +4751,59 @@ Decisions and open questions:
 
 Next stage:
 Follow-up 4 was not started.
+
+## Follow-up 4: record the agent attempt (commit 4a01700237180e04c2c9cd06d9e0a7db1ae15e27)
+
+What was built:
+The README and `docs/DESIGN.md` said no agent was run. Follow-up 3 ran `claude -p` once. It exited 1 because it was not logged in, the saved diff was empty, and the named test did not pass.
+
+That sentence now says an agent command ran once, it was not logged in, it produced no edit, and it did not solve `pallets/click` 3781. The empty diff is not called a failed solution of the task. The container pair is not called a gate pass. No home-directory path was added. The agent was not run again. No login was started. No patch was written. No filter, label, gate, offline install, or the 30 second limit changed. The click window remains 4/4 and was labeled by the filter author. The same author wrote the filters and the labels.
+
+Commands run and their real output:
+
+`.venv/bin/ruff check forge tests && .venv/bin/mypy && .venv/bin/pytest` (exit 0)
+
+```
+All checks passed!
+Success: no issues found in 40 source files
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/shubhambaviskar/Desktop/TaskForge
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 202 items
+
+tests/test_allowlist.py ....                                             [  1%]
+tests/test_check.py ..............                                       [  8%]
+tests/test_ci.py .                                                       [  9%]
+tests/test_cli.py .........                                              [ 13%]
+tests/test_config.py ......                                              [ 16%]
+tests/test_filters.py .............................................      [ 39%]
+tests/test_funnel.py ..........                                          [ 44%]
+tests/test_gates.py .............                                        [ 50%]
+tests/test_git_hygiene.py .....                                          [ 52%]
+tests/test_github.py .....................                               [ 63%]
+tests/test_outcomes.py ........                                          [ 67%]
+tests/test_package_pull.py ......                                        [ 70%]
+tests/test_publish.py ...........                                        [ 75%]
+tests/test_quality.py .....................                              [ 86%]
+tests/test_report.py ...                                                 [ 87%]
+tests/test_sandbox.py ............                                       [ 93%]
+tests/test_split.py ............                                         [ 99%]
+tests/test_wheel.py .                                                    [100%]
+
+============================= 202 passed in 3.74s ==============================
+```
+
+Bugs found and fixed:
+None. The limitation was out of date. It was replaced with the recorded result.
+
+Files changed:
+`README.md`, `docs/DESIGN.md`.
+
+Decisions and open questions:
+Difficulty remains an estimate. One command that produced no edit does not validate the tasks. `AGENTS.md` stayed unstaged.
+
+Next stage:
+No further follow-up was started.
