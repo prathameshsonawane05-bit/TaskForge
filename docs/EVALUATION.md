@@ -173,16 +173,16 @@ The window contains 13 merged pull requests. That count is under 20, so no furth
 
 | Pull | Label | Rubric clause | Funnel reason |
 | --- | --- | --- | --- |
-| 3773 | reject | At least one Python source file and one Python test file. The only file is `tests/models/test_responses.py`. | |
-| 3730 | reject | At least one Python source file and one Python test file. The only file is `.github/workflows/test-suite.yml`. | |
-| 3703 | reject | Not documentation only. The only file is `docs/advanced/ssl.md`. | |
-| 3699 | reject | At least one Python source file and one Python test file. The source files are `httpx/__init__.py` and `httpx/_auth.py`, and `CHANGELOG.md` is documentation. The file list has no test file. | |
-| 3692 | reject | Not documentation only. The only file is `docs/quickstart.md`. | |
-| 3690 | reject | At least one Python source file and one Python test file. The four files are Python source under `src/`. The file list has no test file. | |
-| 3677 | reject | At least one Python source file and one Python test file. The files are `.github/workflows/publish.yml` and `.github/workflows/test-suite.yml`. | |
-| 3673 | reject | At most five files. The file list has eight files. | |
-| 3672 | reject | At most five files. The file list has eight files. | |
-| 3670 | reject | The body links an issue. The body is a short server example and does not place a closing keyword before an issue reference. | |
-| 3668 | reject | At least one Python source file and one Python test file. The only file is `.github/workflows/test-suite.yml`. | |
-| 3667 | reject | Not documentation only. The only file is `README.md`. | |
-| 3665 | reject | Not documentation only. The only file is `requirements.txt`. | |
+| 3773 | reject | At least one Python source file and one Python test file. The only file is `tests/models/test_responses.py`. | missing_source_or_test |
+| 3730 | reject | At least one Python source file and one Python test file. The only file is `.github/workflows/test-suite.yml`. | missing_source_or_test |
+| 3703 | reject | Not documentation only. The only file is `docs/advanced/ssl.md`. | docs_only |
+| 3699 | reject | At least one Python source file and one Python test file. The source files are `httpx/__init__.py` and `httpx/_auth.py`, and `CHANGELOG.md` is documentation. The file list has no test file. | missing_source_or_test |
+| 3692 | reject | Not documentation only. The only file is `docs/quickstart.md`. | docs_only |
+| 3690 | reject | At least one Python source file and one Python test file. The four files are Python source under `src/`. The file list has no test file. | missing_source_or_test |
+| 3677 | reject | At least one Python source file and one Python test file. The files are `.github/workflows/publish.yml` and `.github/workflows/test-suite.yml`. | missing_source_or_test |
+| 3673 | reject | At most five files. The file list has eight files. | too_many_files |
+| 3672 | reject | At most five files. The file list has eight files. | too_many_files |
+| 3670 | reject | The body links an issue. The body is a short server example and does not place a closing keyword before an issue reference. | no_linked_issue |
+| 3668 | reject | At least one Python source file and one Python test file. The only file is `.github/workflows/test-suite.yml`. | missing_source_or_test |
+| 3667 | reject | Not documentation only. The only file is `README.md`. | docs_only |
+| 3665 | reject | Not documentation only. The only file is `requirements.txt`. | docs_only |
