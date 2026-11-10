@@ -31,6 +31,8 @@ A closed pull request is rejected for the first reason below. `considered` later
 
 The host checkout, `.env`, and the Docker socket are not mounted. The GitHub token is not passed to git or Docker. The image is `python:3.11-slim` for the host architecture. The command does not pass `--platform`. The eval image installs git and pytest while it is built. When the checkout has `pyproject.toml` or `setup.py`, that build runs `pip install -e .` after the files are copied and does not name any further package. A checkout without those files, including the widget and counter fixtures, keeps the git and pytest image. The build may use the network. The run stays offline.
 
+An existing clone is fetched only when its origin URL is exactly `https://github.com/<owner>/<name>.git`. Any other URL is a sandbox error, and the image is not built. After the commit is checked out, that commit is reset and untracked files are removed. The image build starts only when HEAD is the requested commit and `git status --porcelain` is empty. The sandbox is not a complete security boundary. Residual risks: the build has network and runs the checkout's installer; the container runs as root with a writable filesystem; the token is removed from the build and run environment.
+
 ## Gates V1 through V8
 
 The first failure is the only reject reason.

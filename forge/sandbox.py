@@ -534,6 +534,7 @@ def _checkout(
                 reason=ReasonCode.SANDBOX_ERROR,
             )
     else:
+        _require_origin(dest, url, run, env)
         fetched = run(
             ["git", "-C", str(dest), "-c", "credential.helper=", "fetch", "origin"],
             env,
@@ -550,13 +551,41 @@ def _checkout(
             "git checkout of that commit failed.",
             reason=ReasonCode.SANDBOX_ERROR,
         )
+    reset = run(["git", "-C", str(dest), "reset", "--hard", sha], env, 120)
+    if reset.returncode != 0:
+        raise ForgeError(
+            "git reset of that commit failed.",
+            reason=ReasonCode.SANDBOX_ERROR,
+        )
+    cleaned = run(["git", "-C", str(dest), "clean", "-fd"], env, 120)
+    if cleaned.returncode != 0:
+        raise ForgeError(
+            "git clean failed.",
+            reason=ReasonCode.SANDBOX_ERROR,
+        )
     head = run(["git", "-C", str(dest), "rev-parse", "HEAD"], env, 30)
     if head.returncode != 0 or head.stdout.strip().lower() != sha:
         raise ForgeError(
             "Checkout HEAD does not match the requested commit.",
             reason=ReasonCode.SANDBOX_ERROR,
         )
+    status = run(["git", "-C", str(dest), "status", "--porcelain"], env, 30)
+    if status.returncode != 0 or status.stdout.strip() != "":
+        raise ForgeError(
+            "Checkout is not a clean tree at the requested commit.",
+            reason=ReasonCode.SANDBOX_ERROR,
+        )
     return dest
+
+
+def _require_origin(dest: Path, url: str, run: Executor, env: Mapping[str, str]) -> None:
+    """Refuse a clone whose origin is not the GitHub URL for this repository."""
+    found = run(["git", "-C", str(dest), "remote", "get-url", "origin"], env, 30)
+    if found.returncode != 0 or found.stdout.strip() != url:
+        raise ForgeError(
+            "Clone origin is not the GitHub URL for this repository.",
+            reason=ReasonCode.SANDBOX_ERROR,
+        )
 
 
 def _require_base_image(host_platform: str, run: Executor, env: Mapping[str, str]) -> None:

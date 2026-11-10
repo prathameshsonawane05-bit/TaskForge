@@ -1,5 +1,6 @@
 """Isolation settings for the sandbox. These tests do not call Docker."""
 
+import subprocess
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -233,6 +234,151 @@ def test_run_args_are_isolated_and_hide_the_token(tmp_path: Path) -> None:
     assert wait[2] == DEFAULT_TIMEOUT_SECONDS
     name = run_args[run_args.index("--name") + 1]
     assert any(args == ["docker", "rm", "-f", name] for args, _env, _timeout in recorder.calls)
+
+
+class _LocalGit:
+    """Run git on the fixture clone. Docker is recorded and not started."""
+
+    def __init__(self, clone: Path) -> None:
+        self.clone = clone
+        self.calls: list[tuple[list[str], dict[str, str], float | None]] = []
+        self.stolen_at_build: bool | None = None
+
+    def __call__(
+        self,
+        args: list[str],
+        env: Mapping[str, str],
+        timeout: float | None,
+    ) -> CommandResult:
+        self.calls.append((list(args), dict(env), timeout))
+        if args[0] == "git" and "fetch" in args:
+            return CommandResult(0, "", "")
+        if args[0] == "git":
+            completed = subprocess.run(
+                args,
+                env=dict(env),
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+            return CommandResult(completed.returncode, completed.stdout, completed.stderr)
+        if len(args) > 1 and args[1] == "build":
+            self.stolen_at_build = (self.clone / "stolen.py").exists()
+            return CommandResult(0, "", "")
+        if args[:4] == ["docker", "buildx", "imagetools", "inspect"]:
+            return CommandResult(0, "Platform: linux/arm64/v8\n", "")
+        if args[:2] == ["docker", "wait"]:
+            return CommandResult(0, "0\n", "")
+        if args[:2] == ["docker", "logs"]:
+            return CommandResult(0, "ok\n", "")
+        return CommandResult(0, "", "")
+
+
+def _git_clone(path: Path, origin: str) -> str:
+    path.mkdir(parents=True)
+    subprocess.run(["git", "init"], cwd=path, check=True, capture_output=True)
+    (path / "readme.txt").write_text("ok\n", encoding="utf-8")
+    git = ["git", "-c", "user.email=test@example.com", "-c", "user.name=Test"]
+    subprocess.run([*git, "add", "readme.txt"], cwd=path, check=True, capture_output=True)
+    subprocess.run([*git, "commit", "-m", "init"], cwd=path, check=True, capture_output=True)
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "remote", "add", "origin", origin],
+        cwd=path,
+        check=True,
+        capture_output=True,
+    )
+    return head.stdout.strip()
+
+
+def test_untracked_file_in_an_existing_clone_is_gone_before_build(tmp_path: Path) -> None:
+    write_project(tmp_path, f"GITHUB_TOKEN={TOKEN}\n", ["acme/widgets"])
+    clone = tmp_path / "data" / "clones" / "acme" / "widgets"
+    sha = _git_clone(clone, "https://github.com/acme/widgets.git")
+    (clone / "stolen.py").write_text("stolen\n", encoding="utf-8")
+    assert (clone / "stolen.py").is_file()
+    runner_git = _LocalGit(clone)
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=repository_body("acme/widgets", "MIT"))
+
+    with make_client(TOKEN, tmp_path / "cache.sqlite", handler) as client:
+        outcome = run_sandbox(
+            "acme/widgets",
+            sha,
+            ["true"],
+            root=tmp_path,
+            patch=_patch(tmp_path),
+            client=client,
+            executor=runner_git,
+            base_env=_env(),
+            host_platform="linux/arm64",
+        )
+    assert outcome.success is not None
+    assert runner_git.stolen_at_build is False
+    assert not (clone / "stolen.py").exists()
+    head = subprocess.run(
+        ["git", "-C", str(clone), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    status = subprocess.run(
+        ["git", "-C", str(clone), "status", "--porcelain"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert head.stdout.strip() == sha
+    assert status.stdout.strip() == ""
+    builds = [(args, env) for args, env, _timeout in runner_git.calls if args[1:2] == ["build"]]
+    assert len(builds) == 1
+    assert "GITHUB_TOKEN" not in builds[0][1]
+    assert all(TOKEN not in value for value in builds[0][1].values())
+    run_args = next(
+        args for args, _env, _timeout in runner_git.calls if args[:2] == ["docker", "run"]
+    )
+    assert run_args[run_args.index("--network") + 1] == "none"
+    assert run_args[run_args.index("--memory") + 1] == "512m"
+    assert run_args[run_args.index("--cpus") + 1] == "1"
+    assert run_args.count("--mount") == 1
+    assert run_args[run_args.index("--mount") + 1].endswith("readonly")
+
+
+def test_wrong_origin_refuses_checkout_and_does_not_build(tmp_path: Path) -> None:
+    write_project(tmp_path, f"GITHUB_TOKEN={TOKEN}\n", ["acme/widgets"])
+    clone = tmp_path / "data" / "clones" / "acme" / "widgets"
+    sha = _git_clone(clone, "https://github.com/evil/name.git")
+    runner_git = _LocalGit(clone)
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=repository_body("acme/widgets", "MIT"))
+
+    with make_client(TOKEN, tmp_path / "cache.sqlite", handler) as client:
+        with pytest.raises(ForgeError) as caught:
+            run_sandbox(
+                "acme/widgets",
+                sha,
+                ["true"],
+                root=tmp_path,
+                patch=_patch(tmp_path),
+                client=client,
+                executor=runner_git,
+                base_env=_env(),
+                host_platform="linux/arm64",
+            )
+    assert caught.value.reason == ReasonCode.SANDBOX_ERROR
+    assert TOKEN not in str(caught.value)
+    assert not any(args[1:2] == ["build"] for args, _env, _timeout in runner_git.calls)
+    assert not any("fetch" in args for args, _env, _timeout in runner_git.calls)
+    assert (clone / "readme.txt").is_file()
 
 
 def test_timeout_removes_the_container(tmp_path: Path) -> None:
