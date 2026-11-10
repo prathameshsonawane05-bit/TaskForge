@@ -2704,3 +2704,60 @@ The file-list cap of 5 still rejects before the new length check, so a list of s
 
 Next stage:
 Improvement stage 8 was not started.
+
+## Improvement stage 8: publish a complete tree (commit 5d67e2a430b22a48c633b93cf344928367bad9b7)
+
+What was built:
+Before this change, `package_fixture` deleted `output/sample/<task-id>` before it wrote `instruction.md`, `solution/solution.patch`, `tests/test.patch`, `tests/config.json`, `task.json`, and `ATTRIBUTION.md`. `_write_pull_package` did the same to `output/<owner>-<name>-<number>`. `_write_patches` wrote `solution.patch` and then `test.patch` into an existing directory, so a failure on the second write kept the new solution patch beside the old test patch.
+
+The new tree is written in a sibling temporary directory. It is published only after every required file exists and is non-empty. For a package those files are `instruction.md`, `solution/solution.patch`, `tests/test.patch`, `tests/config.json`, `task.json`, and `ATTRIBUTION.md`. For the patch directory they are `solution.patch` and `test.patch`. An empty patch, or a patch that does not contain a `diff --git` header, is not published. A successful publish renames the previous directory aside, renames the completed temporary directory into the published path, and deletes the aside copy only after the published path contains the new tree. If the publish rename fails, the aside copy is moved back. The published directory is not deleted first. A failed validation deletes only the temporary directory. A crash between the two renames can leave the published path missing and the aside copy present. `docs/DESIGN.md` says that, and it does not call the publish crash-proof.
+
+Tests use a temporary root. An existing package with a marker file stays unchanged when the instruction is empty, when a patch is empty, when a patch has no diff header, when the second patch write raises, and when the publish rename raises. A successful second write replaces the package and leaves no temporary directory and no aside copy. The same failure rules apply to the patch directory. `forge package-pull` was not called. `output/pallets-click-3858` and the committed sample were not written. No filter, evaluation label, or the 30 second limit changed. No upstream repository code was run on the host. The token was not printed.
+
+Commands run and their real output:
+
+`.venv/bin/ruff check forge tests && .venv/bin/mypy forge tests && .venv/bin/pytest`
+
+```
+All checks passed!
+Success: no issues found in 39 source files
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/shubhambaviskar/Desktop/TaskForge
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 199 items
+
+tests/test_allowlist.py ....                                             [  2%]
+tests/test_check.py ..............                                       [  9%]
+tests/test_ci.py .                                                       [  9%]
+tests/test_cli.py .........                                              [ 14%]
+tests/test_config.py ......                                              [ 17%]
+tests/test_filters.py .............................................      [ 39%]
+tests/test_funnel.py ..........                                          [ 44%]
+tests/test_gates.py .............                                        [ 51%]
+tests/test_git_hygiene.py ....                                           [ 53%]
+tests/test_github.py .....................                               [ 63%]
+tests/test_outcomes.py .......                                           [ 67%]
+tests/test_package_pull.py ......                                        [ 70%]
+tests/test_publish.py ...........                                        [ 75%]
+tests/test_quality.py .....................                              [ 86%]
+tests/test_report.py ...                                                 [ 87%]
+tests/test_sandbox.py ............                                       [ 93%]
+tests/test_split.py ............                                         [100%]
+
+============================= 199 passed in 3.08s ==============================
+```
+
+Bugs found and fixed:
+Deleting the published directory before the new files were written could leave nothing, or a new solution patch beside an old test patch, when a later write failed.
+
+Files changed:
+`forge/package.py`, `tests/test_publish.py`, `docs/DESIGN.md`.
+
+Decisions and open questions:
+A diff header is a line that starts with `diff --git `. After a failed publish rename, the previous directory is restored and the temporary directory is removed because the published path holds the previous tree again. A crash between the two renames is still possible. `AGENTS.md` stayed unstaged.
+
+Next stage:
+Improvement stage 9 was not started.
