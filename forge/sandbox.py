@@ -28,7 +28,10 @@ from forge.models import CheckResult, ReasonCode
 DEFAULT_TIMEOUT_SECONDS = 60
 DEFAULT_MEMORY = "512m"
 DEFAULT_CPUS = "1"
-BASE_IMAGE = "python:3.11-slim"
+BASE_IMAGE = (
+    "python:3.11-slim"
+    "@sha256:07d4824036af339fa1b6ef769cc99d9c10a141769538b52b3b597c84f7a7b535"
+)
 PATCH_TARGET = "/patch"
 PATCHES_TARGET = "/patches"
 _SHA = re.compile(r"^[0-9a-f]{40}$")

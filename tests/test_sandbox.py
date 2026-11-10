@@ -212,7 +212,11 @@ def test_run_args_are_isolated_and_hide_the_token(tmp_path: Path) -> None:
     assert clone.resolve() not in dockerfile.resolve().parents
     assert build[-1] == str(clone)
     text = dockerfile.read_text(encoding="utf-8")
-    assert "FROM python:3.11-slim" in text
+    pinned = (
+        "FROM python:3.11-slim"
+        "@sha256:07d4824036af339fa1b6ef769cc99d9c10a141769538b52b3b597c84f7a7b535"
+    )
+    assert pinned in text
     assert "COPY . /repo" in text
     assert "RUN" not in text
     assert "pytest" not in text

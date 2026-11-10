@@ -20,3 +20,7 @@ def test_ci_runs_ruff_mypy_and_pytest_without_a_token() -> None:
         assert f"run: {command}" in text
     assert _TOKEN_VALUE.search(text) is None
     assert "GITHUB_TOKEN" not in text
+    assert 'python-version: ["3.11", "3.12"]' in text
+    assert "requirements-dev.txt" in text
+    assert "--no-deps" in text
+    assert ".[dev]" not in text

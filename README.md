@@ -4,23 +4,34 @@ TaskForge reads merged pull requests from allowlisted public Python repositories
 
 ## Setup
 
-Python 3.11 is required. From a fresh clone on this machine:
+Python 3.11 or newer. CI runs 3.11 and 3.12. From a fresh clone on this machine:
 
 ```bash
 uv venv --python 3.11 --seed .venv
 source .venv/bin/activate
-python -m pip install -e ".[dev]"
+python -m pip install -r requirements-dev.txt
+python -m pip install --no-deps -e .
 ```
 
-`source .venv/bin/activate` works in bash and zsh. After that, `forge`, `ruff`, `mypy`, and `pytest` are on `PATH`. `--seed` installs pip into the environment. Without it, `python -m pip` is missing.
+`source .venv/bin/activate` works in bash and zsh. After that, `forge`, `ruff`, `mypy`, and `pytest` are on `PATH`. `--seed` installs pip into the environment. Without it, `python -m pip` is missing. `requirements-dev.txt` is the locked development set. The second command installs this project without resolving the lower bounds in `pyproject.toml`.
 
 On a normal CPython, where `python3.11 -m venv` can find the standard library, use this block instead:
 
 ```bash
 python3.11 -m venv .venv
 source .venv/bin/activate
-python -m pip install -e ".[dev]"
+python -m pip install -r requirements-dev.txt
+python -m pip install --no-deps -e .
 ```
+
+To refresh the lock after a bound changes:
+
+```bash
+uv lock --upgrade
+uv export --extra dev --no-emit-project --frozen --output-file requirements-dev.txt
+```
+
+A refresh is its own commit. Do not edit a pin in `uv.lock` or `requirements-dev.txt` by hand.
 
 ## Token
 
