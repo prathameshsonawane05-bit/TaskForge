@@ -122,3 +122,39 @@ Recall is true accepts divided by the number I accepted. I accepted none, so rec
 The 26 unmerged pull requests in the window were not candidates. The funnel counted them as `not_merged`. No filter was changed.
 
 This is not an independent evaluation. I wrote the pipeline, and the rubric in this file restates its rules. I did not open the filter code while labeling this window, and I did not change a label after the funnel. Agreement on an all-reject set is not evidence that an accept would be right.
+
+## Click window after the first 30
+
+Chosen now, before this funnel: `pallets/click`. Skip the 30 closed pull requests already used, then read the next 100. `pydantic/pydantic`, `psf/requests`, `encode/httpx`, and `pallets/itsdangerous` were not used. The rubric above was not changed. `forge/filters.py` was not opened while these labels were written. The funnel has not been run on this window. The funnel reason column is blank on purpose. These labels are not to be changed after a funnel reason is known.
+
+The window contains 27 merged pull requests. Every merged pull request is labeled. An unmerged pull request is not a candidate. The local counter fixture is not a candidate.
+
+| Pull | Label | Rubric clause | Funnel reason |
+| --- | --- | --- | --- |
+| 3860 | reject | The body links an issue. The body cites a Cloup issue URL and pull 3473 without a closing keyword immediately before either reference. | |
+| 3858 | accept | Every clause holds. Five or fewer files, 84 changed lines, source `src/click/types.py`, tests under `tests/`, and the body says `Closes #3822`. | |
+| 3851 | reject | At most five files. The file list has thirty files. | |
+| 3850 | reject | At most five files. The file list has thirteen files. | |
+| 3829 | reject | Not documentation only. The files are `docs/complex.md`, `docs/exceptions.md`, and `docs/utils.md`. | |
+| 3826 | reject | Not documentation only. The files are `docs/contrib.md` and `docs/faqs.md`. | |
+| 3821 | reject | The body links an issue. The body lists `#2516` and `#2517` without a closing keyword immediately before either number. | |
+| 3820 | reject | Not documentation only. The only file is `docs/faqs.md`. | |
+| 3819 | reject | Not documentation only. The files are `docs/faqs.md` and `docs/shell-completion.md`. | |
+| 3818 | reject | A known size of at most 300 changed lines. The file list sums to 310. | |
+| 3817 | reject | At least one Python source file and one Python test file. The only file is `src/click/_winconsole.py`. | |
+| 3808 | reject | At most five files. The file list has six files. | |
+| 3805 | reject | The body links an issue. The body describes the sentinel bug and does not place a closing keyword before an issue reference. | |
+| 3801 | reject | No lockfile. The file list includes `uv.lock`. | |
+| 3800 | reject | At most five files. The file list has thirty-nine files. | |
+| 3793 | reject | Not documentation only. The only file is `docs/contrib.md`. | |
+| 3787 | reject | No lockfile. The file list includes `uv.lock`. | |
+| 3781 | accept | Every clause holds. Five files, 58 changed lines, source under `src/click/`, tests under `tests/`, and the body says `Closes #2869`. | |
+| 3780 | reject | At least one Python source file and one Python test file. The files are `docs/faqs.md` and `src/click/termui.py`. | |
+| 3778 | reject | Not documentation only. The only file is `docs/faqs.md`. | |
+| 3777 | reject | The body links an issue. The body links pull requests 3767 and 3776, not an issue with a closing keyword. | |
+| 3776 | reject | At least one Python source file and one Python test file. The only file is `src/click/_termui_impl.py`. | |
+| 3769 | accept | Every clause holds. Three files, 43 changed lines, source `src/click/_termui_impl.py`, test `tests/test_termui.py`, and the body says `Closes #3571`. | |
+| 3768 | reject | At least one Python source file and one Python test file. The files are a workflow YAML file and `docs/contributing.md`. | |
+| 3767 | reject | The body links an issue. The body lists `#1572` and `#3405` without a closing keyword immediately before either number. | |
+| 3764 | reject | The body links an issue. `follow up on #3739` and the later `#` references do not have a closing keyword immediately before the number. | |
+| 3739 | accept | Every clause holds. Three files, 78 changed lines, source `src/click/_termui_impl.py`, test `tests/test_termui.py`, and the body says `Closes #3740`. | |
