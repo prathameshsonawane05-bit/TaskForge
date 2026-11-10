@@ -1083,3 +1083,90 @@ The funnel repo and limit were `pydantic/pydantic` and 30, chosen before the run
 
 Next stage:
 Stage 8: labeled evaluation. Waiting for "next".
+
+## Stage 8: Labeled evaluation of the accept decision (commit 381ca4e3094d2078525c3cd6f20d014fa84e053b)
+
+What was built:
+`docs/EVALUATION.md` is v1. The rubric was written before the funnel ran. It says when a merged pull request is a fair small task, in prose, and the first failing clause is the label. The labels were applied from each candidate's title, body, and file list. The filter function was not imported to produce those labels. The funnel reasons were filled in only after every label was written, and no label was changed.
+
+The repo and the limit were chosen before the run: `psf/requests`, 50 closed pull requests. That window contains 19 merged pull requests. The count is under 20, so no further page was fetched. All 19 were labeled. The local counter fixture was not a candidate. The held-out repository was not started.
+
+Every rubric clause is the same rule as `forge/filters.py`. I wrote that module, then restated it. On this window `changed_files` matched the file-list length, and the pull's additions plus deletions matched the file-list sum, so the two size inputs did not disagree. I rejected all 19. The funnel accepted none: 17 `missing_source_or_test`, 1 `docs_only` (7576), and 1 `too_many_files` (7540). True accept 0, false accept 0, false reject 0, true reject 19. The funnel accepted none, so precision is undefined. I accepted none, so recall is undefined. A perfect score is not evidence. This is not an independent evaluation.
+
+The V6 header was also fixed. Mixed failure kinds are named in first-seen order. A single `other` failure still prints `v6 other`. No filter was changed.
+
+Commands run and their real output:
+
+`.venv/bin/ruff check forge tests`
+
+```
+All checks passed!
+```
+
+`.venv/bin/mypy`
+
+```
+Success: no issues found in 34 source files
+```
+
+`.venv/bin/pytest`
+
+```
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/shubhambaviskar/Desktop/TaskForge
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 144 items
+
+tests/test_allowlist.py ....                                             [  2%]
+tests/test_check.py ..............                                       [ 12%]
+tests/test_cli.py .........                                              [ 18%]
+tests/test_config.py ......                                              [ 22%]
+tests/test_filters.py ..................................                 [ 46%]
+tests/test_funnel.py ....                                                [ 49%]
+tests/test_gates.py .............                                        [ 58%]
+tests/test_git_hygiene.py ....                                           [ 61%]
+tests/test_github.py .....................                               [ 75%]
+tests/test_outcomes.py .....                                             [ 79%]
+tests/test_quality.py ............                                       [ 87%]
+tests/test_sandbox.py ..........                                         [ 94%]
+tests/test_split.py ........                                             [100%]
+
+============================= 144 passed in 1.93s ==============================
+```
+
+`.venv/bin/forge funnel psf/requests --limit 50` (process status 0). The repo and the limit were chosen before this run.
+
+```
+repo psf/requests
+limit 50
+considered 50
+not_merged 31
+revert 0
+too_many_files 1
+too_many_lines 0
+unknown_size 0
+binary 0
+lockfile 0
+docs_only 1
+missing_source_or_test 17
+no_linked_issue 0
+accepted 0
+older_prs_cut_off yes
+```
+
+Accepted was 0. The filters were left as they were. The 31 unmerged pull requests were not candidates. Python on the host is 3.11.14 arm64. The funnel ran through the GitHub client. No repository code was run on the host, and the token was not printed.
+
+Bugs found and fixed:
+- The V6 header printed `v6 other` whenever the failures were not exactly one kind. `other` is a real kind, meaning the failure is not an assertion and not an import or attribute error. A mix of `assertion` and `import_or_attribute` was therefore labeled as a kind that did not occur, and the kinds that did occur were hidden. The header now names each distinct kind in the order it first appears. A lone `other` still prints `v6 other`. An empty failure list prints `v6 none`.
+
+Files changed:
+`forge/quality.py`, `tests/test_quality.py`, `docs/EVALUATION.md`.
+
+Decisions and open questions:
+The window has 19 merged pull requests, which is under 20. That count is reported and no second page was fetched. Every labeled candidate was a dependency bump, a workflow edit, or a documentation link fix, so the rubric and the funnel both rejected all of them. Agreement on an all-reject set is not evidence that an accept would be right. The pre-existing uncommitted edit to `AGENTS.md` was left unstaged.
+
+Next stage:
+Stage 9: the held-out repository. Waiting for "next".
