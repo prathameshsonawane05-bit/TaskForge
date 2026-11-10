@@ -17,10 +17,12 @@ python -m pip install -e ".[dev]"
 If `python3.11 -m venv` fails because that interpreter is a uv-managed build and the new environment cannot find the standard library, create the environment with uv and install the same way:
 
 ```bash
-uv venv --python 3.11 .venv
+uv venv --python 3.11 --seed .venv
 source .venv/bin/activate
 python -m pip install -e ".[dev]"
 ```
+
+`--seed` installs pip into the environment. Without it, `python -m pip` is missing.
 
 ## Token
 
