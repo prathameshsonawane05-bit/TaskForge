@@ -1820,3 +1820,53 @@ The upstream run stopped at the first accepted pull request. A later accepted nu
 
 Next stage:
 None. This follow-up is done. The dashboard was not built.
+
+## Click install follow-up (commit 959c22f29a9d3af181bedf8fbf6c516bb42fe2d2)
+
+What was built:
+The eval image now runs `pip install .` after the copy when the checkout has `pyproject.toml` or `setup.py`. That command uses the dependencies the packaging file declares. The widget and counter fixtures have neither file, so they keep the git and pytest image. The build may use the network. The run stays offline, at 512 MB, one CPU, the existing timeout, a read-only patch mount, and a 30 second total. No filter, rubric, label, or gate limit was changed.
+
+Only pull 3858 was run again, at base `7944461a80b780d060899c8835acab3c273a04a6`. The API license is `BSD-3-Clause`. The image built and installed `click-8.5.1.dev0`. The first container rejected `no_fail_to_pass`: 0 fail-to-pass, 1661 pass-to-pass, 10 still failing, 0 regression, 20 skipped. `pip install .` copies the package into site-packages, and the trial applies the solution to `/repo`, so the imported package stays the base copy. V4 through V8 were not reached. Nothing was packaged. 3781, 3769, and 3739 were not run. The 30 second limit was not raised.
+
+Commands run and their real output:
+
+`.venv/bin/ruff check forge tests && .venv/bin/mypy && .venv/bin/pytest`
+
+```
+All checks passed!
+Success: no issues found in 37 source files
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+collected 149 items
+============================= 149 passed in 1.80s ==============================
+```
+
+Pull 3858 through the new eval image:
+
+```
+spdx BSD-3-Clause
+merge 86949d19b930ef68a45566544cb4b9508d895d0d
+head 22177f857a34e3c35ba957553853a37f23feb37e
+parent 7944461a80b780d060899c8835acab3c273a04a6
+issue https://github.com/pallets/click/issues/3822
+source src/click/types.py
+test tests/test_types/test_Path.py tests/typing/typing_path.py
+checkout /Users/shubhambaviskar/Desktop/TaskForge/data/clones/pallets/click
+image taskforge/pallets/click:7944461a80b780d060899c8835acab3c273a04a6
+run 1 elapsed 7.988 before 1 after 1 f2p 0 p2p 1661 still 10 regression 0 skipped 20
+rejected no_fail_to_pass
+```
+
+The build log for that image ended with `Successfully installed click-8.5.1.dev0`.
+
+Bugs found and fixed:
+None. The install succeeded. The gate rejected the pull request, and the image was not changed again to make it pass.
+
+Files changed:
+`forge/sandbox.py`, `tests/test_outcomes.py`, `README.md`, `docs/DESIGN.md`. The run wrote under `data/` and did not write a package under `output/`.
+
+Decisions and open questions:
+A non-editable `pip install .` does not see a solution applied later to `/repo`. The recorded reason is `no_fail_to_pass`. No later pull request was tried. `AGENTS.md` stayed unstaged.
+
+Next stage:
+None. This follow-up is done. The dashboard was not built.
