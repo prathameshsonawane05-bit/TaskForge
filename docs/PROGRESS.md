@@ -2015,3 +2015,206 @@ The classification matches the earlier run. The elapsed times do not, and the 30
 
 Next stage:
 None. This follow-up is done. The dashboard was not built.
+
+## Improvement stage 1: baseline
+
+This stage records the tree at `b85cbdfac5e1120ed5b802aa14078c55d07d9762`. No file under `forge/`, `tests/`, `README.md`, `docs/DESIGN.md`, `docs/EVALUATION.md`, `docs/SPEC.md`, `pyproject.toml`, or `.github/workflows/ci.yml` was changed. No filter, label, or gate was changed. `forge package-pull` was run only as the `torvalds/linux` refusal below. `forge gates`, `forge outcomes`, and `forge package` were not run.
+
+Commands run and their real output:
+
+`git rev-parse HEAD` (exit 0)
+
+```
+b85cbdfac5e1120ed5b802aa14078c55d07d9762
+```
+
+`git status --short` (exit 0)
+
+```
+ M AGENTS.md
+```
+
+`python3 --version` (exit 0)
+
+```
+Python 3.9.6
+```
+
+`.venv/bin/ruff --version` (exit 0)
+
+```
+ruff 0.17.4
+```
+
+`.venv/bin/mypy --version` (exit 0)
+
+```
+mypy 2.4.1 (compiled: yes)
+```
+
+`.venv/bin/pytest --version` (exit 0)
+
+```
+pytest 9.2.0
+```
+
+`docker version` (exit 0)
+
+```
+Client:
+ Version:           27.4.1
+ API version:       1.47
+ Go version:        go1.22.10
+ Git commit:        b9d17ea
+ Built:             Tue Dec 17 15:42:24 2024
+ OS/Arch:           darwin/arm64
+ Context:           colima
+
+Server: Docker Engine - Community
+ Engine:
+  Version:          27.4.0
+  API version:      1.47 (minimum version 1.24)
+  Go version:       go1.22.10
+  Git commit:       92a8393
+  Built:             Sat Dec  7 10:39:01 2024
+  OS/Arch:          linux/arm64
+  Experimental:     false
+ containerd:
+  Version:          1.7.24
+  GitCommit:        88bf19b2105c8b17560993bee28a01ddc2f97182
+ runc:
+  Version:          1.2.2
+  GitCommit:        v1.2.2-0-g7cb3632
+ docker-init:
+  Version:          0.19.0
+  GitCommit:        de40ad0
+```
+
+`docker info --format 'Server={{.ServerVersion}} Arch={{.Architecture}}'` (exit 0)
+
+```
+Server=27.4.0 Arch=aarch64
+```
+
+`.venv/bin/ruff check forge tests` (exit 0)
+
+```
+All checks passed!
+```
+
+`.venv/bin/mypy` (exit 0)
+
+```
+Success: no issues found in 38 source files
+```
+
+`.venv/bin/pytest` (exit 0)
+
+```
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/shubhambaviskar/Desktop/TaskForge
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 152 items
+
+tests/test_allowlist.py ....                                             [  2%]
+tests/test_check.py ..............                                       [ 11%]
+tests/test_ci.py .                                                       [ 12%]
+tests/test_cli.py .........                                              [ 18%]
+tests/test_config.py ......                                              [ 22%]
+tests/test_filters.py ..................................                 [ 44%]
+tests/test_funnel.py ....                                                [ 47%]
+tests/test_gates.py .............                                        [ 55%]
+tests/test_git_hygiene.py ....                                           [ 58%]
+tests/test_github.py .....................                               [ 72%]
+tests/test_outcomes.py ......                                            [ 76%]
+tests/test_package_pull.py ...                                           [ 78%]
+tests/test_quality.py ............                                       [ 86%]
+tests/test_report.py ...                                                 [ 88%]
+tests/test_sandbox.py ..........                                         [ 94%]
+tests/test_split.py ........                                             [100%]
+
+============================= 152 passed in 2.53s ==============================
+```
+
+`.venv/bin/forge check torvalds/linux` (exit 1)
+
+```
+refused torvalds/linux reason=not_on_allowlist
+```
+
+`.venv/bin/forge funnel torvalds/linux --limit 5` (exit 1)
+
+```
+refused torvalds/linux reason=not_on_allowlist
+```
+
+`.venv/bin/forge report torvalds/linux --limit 5` (exit 1)
+
+```
+refused torvalds/linux reason=not_on_allowlist
+```
+
+`.venv/bin/forge split torvalds/linux 1` (exit 1)
+
+```
+refused torvalds/linux#1 reason=not_on_allowlist
+```
+
+`.venv/bin/forge package-pull torvalds/linux 1` (exit 1)
+
+```
+refused torvalds/linux#1 reason=not_on_allowlist
+```
+
+`output/torvalds-linux-1` was not created. `ls -d output/torvalds-linux-1` exited 1 with `No such file or directory`.
+
+Modules under `forge/`:
+
+- `forge/__init__.py`
+- `forge/__main__.py`
+- `forge/allowlist.py`
+- `forge/check.py`
+- `forge/cli.py`
+- `forge/config.py`
+- `forge/errors.py`
+- `forge/filters.py`
+- `forge/funnel.py`
+- `forge/gates.py`
+- `forge/github.py`
+- `forge/models.py`
+- `forge/outcomes.py`
+- `forge/package.py`
+- `forge/quality.py`
+- `forge/report.py`
+- `forge/sandbox.py`
+- `forge/split.py`
+- `forge/widget_fixture.py`
+
+Commands registered in `forge/cli.py`: `check`, `funnel`, `report`, `split`, `sandbox`, `outcomes`, `gates`, `package`, `package-pull`.
+
+Body of `closed_pulls_url` in `forge/funnel.py`:
+
+```python
+def closed_pulls_url(owner: str, name: str, *, page: int) -> str:
+    query = urlencode({"state": "closed", "per_page": str(PULLS_PER_PAGE), "page": str(page)})
+    return f"{API_ROOT}/repos/{owner}/{name}/pulls?{query}"
+```
+
+Sentence in `docs/EVALUATION.md`: "The window is the 50 most recently closed pull requests of `psf/requests`."
+
+Commands that exited non-zero:
+
+- `.venv/bin/forge check torvalds/linux` exited 1.
+- `.venv/bin/forge funnel torvalds/linux --limit 5` exited 1.
+- `.venv/bin/forge report torvalds/linux --limit 5` exited 1.
+- `.venv/bin/forge split torvalds/linux 1` exited 1.
+- `.venv/bin/forge package-pull torvalds/linux 1` exited 1.
+- `ls -d output/torvalds-linux-1` exited 1 because that directory was not created.
+
+None of those were fixed in this stage. `AGENTS.md` stayed unstaged.
+
+Next stage:
+Improvement stage 2 was not started.
