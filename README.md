@@ -4,17 +4,7 @@ TaskForge reads merged pull requests from allowlisted public Python repositories
 
 ## Setup
 
-Python 3.11 is required. From a fresh clone:
-
-```bash
-python3.11 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e ".[dev]"
-```
-
-`source .venv/bin/activate` works in bash and zsh. After that, `forge`, `ruff`, `mypy`, and `pytest` are on `PATH`.
-
-If `python3.11 -m venv` fails because that interpreter is a uv-managed build and the new environment cannot find the standard library, create the environment with uv and install the same way:
+Python 3.11 is required. From a fresh clone on this machine:
 
 ```bash
 uv venv --python 3.11 --seed .venv
@@ -22,7 +12,15 @@ source .venv/bin/activate
 python -m pip install -e ".[dev]"
 ```
 
-`--seed` installs pip into the environment. Without it, `python -m pip` is missing.
+`source .venv/bin/activate` works in bash and zsh. After that, `forge`, `ruff`, `mypy`, and `pytest` are on `PATH`. `--seed` installs pip into the environment. Without it, `python -m pip` is missing.
+
+On a normal CPython, where `python3.11 -m venv` can find the standard library, use this block instead:
+
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[dev]"
+```
 
 ## Token
 
@@ -63,7 +61,7 @@ pytest
 
 ## Docker
 
-`forge sandbox`, `forge outcomes`, `forge gates`, and `forge package` need Docker. Repository code runs only inside that sandbox. The container has no network, 512 MB of memory, one CPU, a timeout, and a read-only patch mount. The host does not run the repository's tests or setup.
+`forge sandbox`, `forge outcomes`, `forge gates`, and `forge package` need Docker. The Docker daemon must be able to mount the clone, and this Colima does not mount `/tmp`. Repository code runs only inside that sandbox. The container has no network, 512 MB of memory, one CPU, a timeout, and a read-only patch mount. The host does not run the repository's tests or setup.
 
 ## Limitations
 
