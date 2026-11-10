@@ -1255,3 +1255,118 @@ The held-out repository was the one named for this stage. The API id was `BSD-3-
 
 Next stage:
 Stage 10: reports. Waiting for "next".
+
+## Stage 10: JSON and Markdown funnel reports (commit 22b85fb563a26e8386711ea2e3ff8bf171c8dea9)
+
+What was built:
+`forge report owner/name --limit N` runs the existing funnel and writes `output/reports/<owner>-<name>-<limit>.json` and the matching `.md` file. It prints both paths. The files contain the funnel fields: repo, limit, considered, every rejection count, accepted, and older_prs_cut_off. They do not contain precision or recall. Those numbers stay in `docs/EVALUATION.md`, and both are undefined. If considered does not equal accepted plus the rejection counts, the command exits with an error and writes neither file. A refused repository writes neither file and exits the same way `forge funnel` already refuses. The dashboard was not built. No filter, rubric, or label was changed. Stage 11 was not started.
+
+The report files are under `/output/*`, which git already ignores. They were not committed.
+
+Commands run and their real output:
+
+`.venv/bin/ruff check forge tests`
+
+```
+All checks passed!
+```
+
+`.venv/bin/mypy`
+
+```
+Success: no issues found in 36 source files
+```
+
+`.venv/bin/pytest`
+
+```
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/shubhambaviskar/Desktop/TaskForge
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 147 items
+
+tests/test_allowlist.py ....                                             [  2%]
+tests/test_check.py ..............                                       [ 12%]
+tests/test_cli.py .........                                              [ 18%]
+tests/test_config.py ......                                              [ 22%]
+tests/test_filters.py ..................................                 [ 45%]
+tests/test_funnel.py ....                                                [ 48%]
+tests/test_gates.py .............                                        [ 57%]
+tests/test_git_hygiene.py ....                                           [ 59%]
+tests/test_github.py .....................                               [ 74%]
+tests/test_outcomes.py .....                                             [ 77%]
+tests/test_quality.py ............                                       [ 85%]
+tests/test_report.py ...                                                 [ 87%]
+tests/test_sandbox.py ..........                                         [ 94%]
+tests/test_split.py ........                                             [100%]
+
+============================= 147 passed in 1.83s ==============================
+```
+
+`.venv/bin/forge report pallets/itsdangerous --limit 40` (process status 0)
+
+```
+json /Users/shubhambaviskar/Desktop/TaskForge/output/reports/pallets-itsdangerous-40.json
+markdown /Users/shubhambaviskar/Desktop/TaskForge/output/reports/pallets-itsdangerous-40.md
+```
+
+`output/reports/pallets-itsdangerous-40.json`
+
+```
+{
+  "repo": "pallets/itsdangerous",
+  "limit": 40,
+  "considered": 40,
+  "not_merged": 26,
+  "revert": 0,
+  "too_many_files": 3,
+  "too_many_lines": 0,
+  "unknown_size": 0,
+  "binary": 0,
+  "lockfile": 0,
+  "docs_only": 3,
+  "missing_source_or_test": 8,
+  "no_linked_issue": 0,
+  "accepted": 0,
+  "older_prs_cut_off": "yes"
+}
+```
+
+`output/reports/pallets-itsdangerous-40.md`
+
+```
+# Funnel report
+
+repo pallets/itsdangerous
+limit 40
+considered 40
+not_merged 26
+revert 0
+too_many_files 3
+too_many_lines 0
+unknown_size 0
+binary 0
+lockfile 0
+docs_only 3
+missing_source_or_test 8
+no_linked_issue 0
+accepted 0
+older_prs_cut_off yes
+```
+
+Those counts match the recorded funnel: considered 40, not_merged 26, too_many_files 3, docs_only 3, missing_source_or_test 8, accepted 0, older_prs_cut_off yes. Considered equals accepted plus the rejection counts. No filter was changed. Python on the host is 3.11.14 arm64. The command used the GitHub client. No repository code was run on the host, and the token was not printed.
+
+Bugs found and fixed:
+None.
+
+Files changed:
+`forge/cli.py`, `forge/report.py`, `tests/test_report.py`.
+
+Decisions and open questions:
+The two files use the funnel field names, with `older_prs_cut_off` written as `yes` or `no` in both. The optional dashboard was left unbuilt. The pre-existing uncommitted edit to `AGENTS.md` was left unstaged.
+
+Next stage:
+Stage 11: docs and CI. Waiting for "next".
