@@ -103,5 +103,5 @@ pytest
 - Difficulty is only an estimate. Tasks are not validated against real agents.
 - Three windows accepted none, so precision and recall are undefined: `psf/requests`, `pallets/itsdangerous`, and `encode/httpx`.
 - The click window was 4/4 and was labeled by the filter author.
-- The three written packages, `pallets/click` 3858, 3781, and 3769, are not committed. 3739 was not packaged because V7 leaked one solution line. Nine tests still failed and twenty were skipped on the packaged click pulls. V6 recorded `other`. No agent was run.
-- The only committed task is `output/sample/local-counter`. It has no upstream repository, and it was written to pass the gates.
+- This stage committed `pallets/click` 3781 and 3769. 3858 was not packaged because the gate rejected it as too slow. 3739 was not packaged because V7 leaked one solution line. Nine tests still failed and twenty were skipped. V6 recorded `other` on the pulls that reached quality. No agent was run.
+- The committed tasks are `output/pallets-click-3781`, `output/pallets-click-3769`, and `output/sample/local-counter`. The sample has no upstream repository, and it was written to pass the gates.

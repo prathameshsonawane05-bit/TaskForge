@@ -1,9 +1,19 @@
 """Guards that secrets and the spec path stay where git expects them."""
 
+import json
 import subprocess
 from pathlib import Path
 
 from forge.config import find_repo_root
+
+_PACKAGE_FILES = (
+    "instruction.md",
+    "solution/solution.patch",
+    "tests/test.patch",
+    "tests/config.json",
+    "task.json",
+    "ATTRIBUTION.md",
+)
 
 
 def _tracked(root: Path) -> set[str]:
@@ -58,6 +68,23 @@ def test_sample_is_tracked() -> None:
             check=False,
         )
         assert ignored.returncode != 0
+
+
+def test_committed_packages_have_required_files() -> None:
+    root = find_repo_root()
+    tracked = _tracked(root)
+    tasks = sorted(
+        path for path in tracked if path.startswith("output/") and path.endswith("/task.json")
+    )
+    assert tasks
+    for task in tasks:
+        payload = json.loads((root / task).read_text(encoding="utf-8"))
+        assert isinstance(payload, dict)
+        package = task.removesuffix("/task.json")
+        for name in _PACKAGE_FILES:
+            relative = f"{package}/{name}"
+            assert relative in tracked
+            assert (root / relative).is_file()
 
 
 def test_ds_store_is_ignored() -> None:

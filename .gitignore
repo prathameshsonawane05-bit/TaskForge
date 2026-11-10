@@ -4,6 +4,8 @@ __pycache__/
 /data/
 /output/*
 !/output/sample/
+!/output/pallets-click-3781/
+!/output/pallets-click-3769/
 .DS_Store
 .mypy_cache/
 .pytest_cache/
