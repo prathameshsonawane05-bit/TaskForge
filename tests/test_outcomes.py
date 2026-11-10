@@ -210,7 +210,7 @@ def test_trial_mounts_only_the_patch_directory(tmp_path: Path) -> None:
         assert TOKEN not in " ".join(args)
         assert "GITHUB_TOKEN" not in env
         assert all(TOKEN not in value for value in env.values())
-    assert "pip install --no-cache-dir ." not in written
+    assert "pip install -e ." not in written
 
 
 def test_packaged_checkout_is_installed_after_copy(tmp_path: Path) -> None:
@@ -249,7 +249,7 @@ def test_packaged_checkout_is_installed_after_copy(tmp_path: Path) -> None:
     bare_text = (tmp_path / "data" / "sandbox" / "eval.Dockerfile").read_text(encoding="utf-8")
     assert bare_tag == f"taskforge/acme/demo:{sha}"
     assert bare_text == eval_dockerfile_text()
-    assert "pip install --no-cache-dir ." not in bare_text
+    assert "pip install -e ." not in bare_text
 
     build_eval_image(
         "acme",
@@ -263,9 +263,9 @@ def test_packaged_checkout_is_installed_after_copy(tmp_path: Path) -> None:
     )
     packaged_text = (tmp_path / "data" / "sandbox" / "eval.Dockerfile").read_text(encoding="utf-8")
     copy_at = packaged_text.index("COPY . /repo")
-    install_at = packaged_text.index("RUN pip install --no-cache-dir .")
+    install_at = packaged_text.index("RUN pip install --no-cache-dir -e .")
     assert install_at > copy_at
-    assert packaged_text.endswith("RUN pip install --no-cache-dir .\n")
+    assert packaged_text.endswith("RUN pip install --no-cache-dir -e .\n")
     assert "pip install click" not in packaged_text
     assert "pip install pytest" not in packaged_text
 
@@ -280,7 +280,7 @@ def test_packaged_checkout_is_installed_after_copy(tmp_path: Path) -> None:
         host_platform="linux/arm64",
     )
     setup_text = (tmp_path / "data" / "sandbox" / "eval.Dockerfile").read_text(encoding="utf-8")
-    assert setup_text.endswith("RUN pip install --no-cache-dir .\n")
+    assert setup_text.endswith("RUN pip install --no-cache-dir -e .\n")
 
     build_eval_image(
         "acme",

@@ -96,7 +96,7 @@ def dockerfile_text() -> str:
 def eval_dockerfile_text(*, install_checkout: bool = False) -> str:
     """Install git and pytest at build time. The run itself stays offline.
 
-    When ``install_checkout`` is true, ``pip install .`` runs after the copy.
+    When ``install_checkout`` is true, ``pip install -e .`` runs after the copy.
     That command installs the checkout and the dependencies its packaging
     file declares. It does not name any other package.
     """
@@ -110,7 +110,7 @@ def eval_dockerfile_text(*, install_checkout: bool = False) -> str:
         "COPY . /repo\n"
     )
     if install_checkout:
-        text += "RUN pip install --no-cache-dir .\n"
+        text += "RUN pip install --no-cache-dir -e .\n"
     return text
 
 
@@ -282,7 +282,7 @@ def build_eval_image(
     """Build the eval image. The build may use the network. The run stays offline.
 
     A checkout with ``pyproject.toml`` or ``setup.py`` is installed with
-    ``pip install .`` after the files are copied. A checkout without that
+    ``pip install -e .`` after the files are copied. A checkout without that
     metadata keeps the git and pytest image.
     """
     digest = _require_sha(sha)
