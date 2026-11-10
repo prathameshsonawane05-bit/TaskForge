@@ -1,4 +1,4 @@
-"""CLI for license checks, the funnel, patch splits, the sandbox, and outcomes.
+"""CLI for license checks, the funnel, reports, patch splits, the sandbox, and outcomes.
 
 Exit status: 0 accepted, a funnel was printed, or a trial was classified.
 1 a repository was refused. A finished sandbox uses the container status.
@@ -19,6 +19,7 @@ from forge.gates import format_gates, run_fixture_gates
 from forge.models import ReasonCode
 from forge.outcomes import format_trial, run_widget_trial
 from forge.package import format_package, package_fixture
+from forge.report import write_reports
 from forge.sandbox import DEFAULT_TIMEOUT_SECONDS, format_success, run_sandbox
 from forge.split import format_split, run_split
 
@@ -95,6 +96,46 @@ def funnel_command(
         typer.echo(redact(line, secret))
         raise typer.Exit(code=1)
     typer.echo(redact(format_report(outcome.report), secret))
+
+
+@app.command("report")
+def report_command(
+    repo: Annotated[str, typer.Argument(help="Repository as owner/name.")],
+    limit: Annotated[
+        int,
+        typer.Option("--limit", help="How many closed PRs to read. This does not cap accepts."),
+    ],
+) -> None:
+    """Write the funnel as JSON and Markdown. A refusal writes neither file."""
+    root = find_repo_root()
+    try:
+        outcome = run_funnel(repo, root=root, limit=limit)
+    except Exception as exc:
+        _emit_failure(root, exc)
+        raise typer.Exit(code=2) from None
+    secret = secret_for_redaction(root / ".env")
+    if outcome.report is None:
+        refusal = outcome.refusal
+        if refusal is None:
+            _emit_failure(
+                root,
+                ForgeError("Funnel finished without a report.", reason=ReasonCode.INTERNAL),
+            )
+            raise typer.Exit(code=2) from None
+        reason = refusal.reason if refusal.reason is not None else ReasonCode.INTERNAL
+        if refusal.spdx_id is None:
+            line = f"refused {refusal.full_name} reason={reason}"
+        else:
+            line = f"refused {refusal.full_name} reason={reason} spdx={refusal.spdx_id}"
+        typer.echo(redact(line, secret))
+        raise typer.Exit(code=1)
+    try:
+        json_path, markdown_path = write_reports(outcome.report, root=root)
+    except Exception as exc:
+        _emit_failure(root, exc)
+        raise typer.Exit(code=2) from None
+    typer.echo(redact(f"json {json_path}", secret))
+    typer.echo(redact(f"markdown {markdown_path}", secret))
 
 
 @app.command("split")
