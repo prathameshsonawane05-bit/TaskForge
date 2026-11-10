@@ -84,3 +84,26 @@ Recall is true accepts divided by the number I accepted. I accepted none, so rec
 The 31 unmerged pull requests in the window were not candidates. The funnel counted them as `not_merged`. The local counter fixture was not a candidate.
 
 A perfect score is not evidence. This is not an independent evaluation. I wrote the pipeline, and the rubric restates its rules. Agreement here does not show that the accept decision is right. No filter was changed after these reasons were known.
+
+## Held-out
+
+Chosen now, before this funnel: `pallets/itsdangerous`, 40 closed pull requests. The GitHub API reported SPDX `BSD-3-Clause`, which is one of the allowed ids, and the repository was added to the allowlist only after that report. The rubric above was not changed. `forge/filters.py` was not opened while these labels were written. The funnel has not been run. The funnel reason column is blank on purpose. These labels are not to be changed after a funnel reason is known.
+
+The window contains 14 merged pull requests. That count is under 20, so no further page was fetched. Every merged pull request in the window is labeled. An unmerged pull request is not a candidate. The local counter fixture is not a candidate.
+
+| Pull | Label | Rubric clause | Funnel reason |
+| --- | --- | --- | --- |
+| 408 | reject | At least one Python source file and one Python test file. The only file is `.github/workflows/publish.yaml`. | |
+| 407 | reject | At most five files. The file list has eight files. | |
+| 406 | reject | At least one Python source file and one Python test file. The Python file is `src/itsdangerous/__init__.py`, and the file list has no test file. | |
+| 405 | reject | At most five files. The file list has six files. | |
+| 404 | reject | At most five files. The file list has twenty-two files. | |
+| 401 | reject | Not documentation only. The files are `CONTRIBUTING.rst` and `README.md`. | |
+| 396 | reject | At least one Python source file and one Python test file. The only file is `.pre-commit-config.yaml`. | |
+| 395 | reject | At least one Python source file and one Python test file. The files are two workflow YAML files. | |
+| 393 | reject | At least one Python source file and one Python test file. The only file is `.pre-commit-config.yaml`. | |
+| 392 | reject | At least one Python source file and one Python test file. The files are two workflow YAML files. | |
+| 391 | reject | Not documentation only. Every file is a `.txt` requirements file. | |
+| 390 | reject | At least one Python source file and one Python test file. The only file is `.pre-commit-config.yaml`. | |
+| 388 | reject | At least one Python source file and one Python test file. The files are two workflow YAML files. | |
+| 387 | reject | Not documentation only. Every file is a `.txt` requirements file. | |
