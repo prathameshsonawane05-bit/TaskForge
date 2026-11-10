@@ -24,7 +24,7 @@ _RESULT = re.compile(
 )
 _PASS_WORDS = frozenset({"PASSED", "XPASS"})
 
-TRIAL_SCRIPT = """\
+BASELINE_SCRIPT = """\
 cd /repo || exit 3
 export PYTHONPATH=/repo
 git -c safe.directory=/repo apply --check /patches/solution.patch || exit 4
@@ -32,13 +32,19 @@ echo SOLUTION_CHECK:absent
 git -c safe.directory=/repo apply /patches/test.patch || exit 5
 python -m pytest -p no:cacheprovider --tb=line -v > /tmp/before.txt 2> /tmp/before.err
 echo BEFORE_STATUS:$?
-git -c safe.directory=/repo apply /patches/solution.patch || exit 6
-python -m pytest -p no:cacheprovider --tb=line -v > /tmp/after.txt 2> /tmp/after.err
-echo AFTER_STATUS:$?
 echo ---BEFORE-STDOUT---
 cat /tmp/before.txt
 echo ---BEFORE-STDERR---
 cat /tmp/before.err
+"""
+
+SOLVED_SCRIPT = """\
+cd /repo || exit 3
+export PYTHONPATH=/repo
+git -c safe.directory=/repo apply /patches/test.patch || exit 5
+git -c safe.directory=/repo apply /patches/solution.patch || exit 6
+python -m pytest -p no:cacheprovider --tb=line -v > /tmp/after.txt 2> /tmp/after.err
+echo AFTER_STATUS:$?
 echo ---AFTER-STDOUT---
 cat /tmp/after.txt
 echo ---AFTER-STDERR---
@@ -149,20 +155,50 @@ def run_trial_container(
     executor: Executor | None = None,
     base_env: Mapping[str, str] | None = None,
 ) -> TrialReport:
-    """Apply both patches inside one fresh container and classify the two pytest runs."""
-    outcome = run_mounted(
+    """Run the baseline pytest and the solved pytest in two containers.
+
+    Both start from ``image``. The baseline container applies the test patch
+    only. The solved container starts from the image again, applies the test
+    patch, and then applies the solution. Each container is removed when its
+    pytest exits, so a file created by the baseline run is not on disk for
+    the solved run.
+    """
+    baseline = _run_role(
         full_name=full_name,
         sha=sha,
         image=image,
-        command=["sh", "-c", TRIAL_SCRIPT],
-        mount=patches,
+        script=BASELINE_SCRIPT,
+        patches=patches,
         checkout=checkout,
         root=root,
         timeout=timeout,
         executor=executor,
         base_env=base_env,
     )
-    return _report(outcome, image=image)
+    if baseline.exit_code != 0:
+        return _report(baseline, image=image)
+    solved = _run_role(
+        full_name=full_name,
+        sha=sha,
+        image=image,
+        script=SOLVED_SCRIPT,
+        patches=patches,
+        checkout=checkout,
+        root=root,
+        timeout=timeout,
+        executor=executor,
+        base_env=base_env,
+    )
+    combined = SandboxSuccess(
+        full_name=baseline.full_name,
+        sha=baseline.sha,
+        image=baseline.image,
+        name=solved.name,
+        exit_code=solved.exit_code,
+        stdout=_join_trial_output(baseline.stdout, solved.stdout),
+        stderr=baseline.stderr + solved.stderr,
+    )
+    return _report(combined, image=image)
 
 
 def run_widget_trial(
@@ -173,7 +209,7 @@ def run_widget_trial(
     base_env: Mapping[str, str] | None = None,
     host_platform: str | None = None,
 ) -> TrialReport:
-    """Apply both patches inside one container and classify the two pytest runs."""
+    """Classify one baseline container and one solved container."""
     prepared = prepare_widget(root)
     image = build_eval_image(
         "local",
@@ -236,6 +272,49 @@ def format_trial(report: TrialReport) -> str:
         ]
     )
     return "\n".join(lines)
+
+
+def _run_role(
+    *,
+    full_name: str,
+    sha: str,
+    image: str,
+    script: str,
+    patches: Path,
+    checkout: Path,
+    root: Path,
+    timeout: float,
+    executor: Executor | None,
+    base_env: Mapping[str, str] | None,
+) -> SandboxSuccess:
+    return run_mounted(
+        full_name=full_name,
+        sha=sha,
+        image=image,
+        command=["sh", "-c", script],
+        mount=patches,
+        checkout=checkout,
+        root=root,
+        timeout=timeout,
+        executor=executor,
+        base_env=base_env,
+    )
+
+
+def _join_trial_output(baseline: str, solved: str) -> str:
+    """Keep the solved container's status line out of the baseline stderr."""
+    marker = "---AFTER-STDOUT---"
+    if marker not in solved:
+        if baseline.endswith("\n"):
+            return baseline + solved
+        return baseline + "\n" + solved
+    head, tail = solved.split(marker, maxsplit=1)
+    status = "".join(
+        f"{line}\n" for line in head.splitlines() if line.startswith("AFTER_STATUS:")
+    )
+    if not baseline.endswith("\n"):
+        baseline += "\n"
+    return status + baseline + marker + tail
 
 
 def _report(outcome: SandboxSuccess, *, image: str) -> TrialReport:

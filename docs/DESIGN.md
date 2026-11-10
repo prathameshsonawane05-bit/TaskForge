@@ -39,8 +39,8 @@ The first failure is the only reject reason.
 - V2 `no_failure_before`. With only the test patch applied, at least one test must fail. A skip is not a failure.
 - V3 `no_fail_to_pass`. At least one test must fail before the solution and pass after it. Only a status of pass counts as a pass.
 - `regression`. A test that passed before the solution fails after it. This is how a pass-to-pass test is required to stay passing. It is checked before the repeat runs.
-- V4 `flaky`. Three fresh containers must agree on the classification and on the before and after pytest statuses.
-- V5 `too_slow`. The sum of those three container times is over 30 seconds.
+- V4 `flaky`. Three repeats must agree on the classification and on the before and after pytest statuses. Each repeat starts a baseline container and a solved container from the same image. The baseline container applies the test patch only. The solved container starts from the image again, applies the test patch, and then applies the solution. Each container is removed when its pytest exits.
+- V5 `too_slow`. The sum of every container's wall time is over 30 seconds.
 - V6. Each fail-to-pass failure from the before run is `assertion`, `import_or_attribute`, or `other`. An import or attribute failure is `unfair` unless the instruction names the missing function and a signature. Mixed kinds are named in the header. `other` is one kind, not a label for a mix.
 - V7. An added source line from `solution.patch`, excluding diff headers, must not equal a whole stripped instruction line. A sentence that merely contains that text is not a leak.
 - V8. A quoted `pytest.raises` match, or a quoted equality on exception text, must appear in the instruction. Otherwise the check is `hidden_requirement`. `assert value() == 1` is not an error message.

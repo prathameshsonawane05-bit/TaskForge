@@ -28,8 +28,9 @@ from forge.sandbox import (
 )
 from forge.widget_fixture import prepare_counter, prepare_widget
 
-# Chosen before any stage 6 gate run. The sum of the three container
-# runtimes is too slow when it is over this many seconds.
+# Chosen before any stage 6 gate run. One repeat is a baseline container
+# and a solved container. The sum of every container's wall time is too
+# slow when it is over this many seconds.
 GATE_RUNTIME_LIMIT_SECONDS = 30.0
 
 

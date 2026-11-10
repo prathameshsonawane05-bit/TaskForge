@@ -1,14 +1,19 @@
 """Classification of two pytest runs. These tests do not call Docker."""
 
+import shutil
+import subprocess
+import sys
 from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 
 from forge.outcomes import (
-    TRIAL_SCRIPT,
+    BASELINE_SCRIPT,
+    SOLVED_SCRIPT,
     classify,
     format_trial,
     parse_pytest_verbose,
+    run_trial_container,
     run_widget_trial,
 )
 from forge.sandbox import (
@@ -173,29 +178,45 @@ def test_trial_mounts_only_the_patch_directory(tmp_path: Path) -> None:
     assert "pytest" in eval_text
     assert "pip" in eval_text
 
-    run_args = next(
-        args for args, _env, _timeout in recorder.calls if args[:2] == ["docker", "run"]
-    )
-    assert run_args[run_args.index("--network") + 1] == "none"
-    assert run_args[run_args.index("--memory") + 1] == "512m"
-    assert run_args[run_args.index("--cpus") + 1] == "1"
-    assert "--read-only" not in run_args
-    assert run_args.count("--mount") == 1
-    mount = run_args[run_args.index("--mount") + 1]
+    runs = [args for args, _env, _timeout in recorder.calls if args[:2] == ["docker", "run"]]
+    assert len(runs) == 2
     patches = tmp_path / "data" / "fixtures" / "widget" / "patches"
-    assert mount.endswith("readonly")
-    assert f"source={patches.resolve()}" in mount
-    assert "target=/patches" in mount
-    assert str(checkout.resolve()) not in mount
-    assert ".env" not in mount
-    assert "docker.sock" not in mount
-    assert TRIAL_SCRIPT in run_args
-    image = run_args[run_args.index(report.image)]
-    assert image == report.image
-    command = run_args[run_args.index(report.image) + 1 :]
-    assert command[0] == "sh"
-    assert "pytest" in command[-1]
-    assert "pip " not in command[-1]
+    assert runs[0][-1] == BASELINE_SCRIPT
+    assert runs[1][-1] == SOLVED_SCRIPT
+    assert "apply /patches/solution.patch" not in BASELINE_SCRIPT
+    assert "apply --check /patches/solution.patch" in BASELINE_SCRIPT
+    assert BASELINE_SCRIPT.index("apply /patches/test.patch") < BASELINE_SCRIPT.index("pytest")
+    solved_test = SOLVED_SCRIPT.index("apply /patches/test.patch")
+    solved_solution = SOLVED_SCRIPT.index("apply /patches/solution.patch")
+    assert solved_test < solved_solution < SOLVED_SCRIPT.index("pytest")
+    names = []
+    for run_args in runs:
+        assert run_args[run_args.index("--network") + 1] == "none"
+        assert run_args[run_args.index("--memory") + 1] == "512m"
+        assert run_args[run_args.index("--cpus") + 1] == "1"
+        assert "--read-only" not in run_args
+        assert run_args.count("--mount") == 1
+        mount = run_args[run_args.index("--mount") + 1]
+        assert mount.endswith("readonly")
+        assert f"source={patches.resolve()}" in mount
+        assert "target=/patches" in mount
+        assert str(checkout.resolve()) not in mount
+        assert ".env" not in mount
+        assert "docker.sock" not in mount
+        assert run_args[run_args.index(report.image)] == report.image
+        command = run_args[run_args.index(report.image) + 1 :]
+        assert command[0] == "sh"
+        assert "pytest" in command[-1]
+        assert "pip " not in command[-1]
+        names.append(run_args[run_args.index("--name") + 1])
+    assert names[0] != names[1]
+    sequence: list[tuple[str, str]] = []
+    for args, _env, _timeout in recorder.calls:
+        if args[:2] == ["docker", "run"]:
+            sequence.append(("run", args[args.index("--name") + 1]))
+        elif args[:3] == ["docker", "rm", "-f"]:
+            sequence.append(("rm", args[-1]))
+    assert sequence.index(("rm", names[0])) < sequence.index(("run", names[1]))
 
     build = next(args for args, _env, _timeout in recorder.calls if args[1] == "build")
     assert "--platform" not in build
@@ -305,3 +326,115 @@ def test_packaged_checkout_is_installed_after_copy(tmp_path: Path) -> None:
         if args[1] == "build":
             assert "--network" not in args
             assert "--platform" not in args
+
+
+class _FreshTree:
+    """One docker run gets one copy of the fixture. A second run starts clean."""
+
+    def __init__(self, source: Path, patches: Path, work: Path) -> None:
+        self.source = source
+        self.patches = patches
+        self.work = work
+        self.trees: list[Path] = []
+        self.leak_at_start: list[bool] = []
+        self._outputs: dict[str, subprocess.CompletedProcess[str]] = {}
+
+    def __call__(
+        self,
+        args: list[str],
+        env: Mapping[str, str],
+        timeout: float | None,
+    ) -> CommandResult:
+        if args[:2] == ["docker", "run"]:
+            name = args[args.index("--name") + 1]
+            dest = self.work / name
+            shutil.copytree(self.source, dest)
+            self.trees.append(dest)
+            self.leak_at_start.append((dest / "leak.txt").exists())
+            private = dest / "trial-out"
+            private.mkdir()
+            script = args[-1]
+            rewritten = (
+                script.replace("/tmp/before.txt", str(private / "before.txt"))
+                .replace("/tmp/before.err", str(private / "before.err"))
+                .replace("/tmp/after.txt", str(private / "after.txt"))
+                .replace("/tmp/after.err", str(private / "after.err"))
+                .replace("/patches", str(self.patches))
+                .replace("/repo", str(dest))
+            )
+            self._outputs[name] = subprocess.run(
+                ["sh", "-c", rewritten],
+                env=dict(env),
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+            return CommandResult(0, "", "")
+        if args[:2] == ["docker", "wait"]:
+            code = self._outputs[args[2]].returncode
+            return CommandResult(0, f"{code}\n", "")
+        if args[:2] == ["docker", "logs"]:
+            completed = self._outputs[args[2]]
+            return CommandResult(0, completed.stdout, completed.stderr)
+        return CommandResult(0, "", "")
+
+
+def test_solved_pytest_starts_without_a_file_the_baseline_created(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "app.py").write_text("def value():\n    return 0\n", encoding="utf-8")
+    subprocess.run(["git", "init"], cwd=source, check=True, capture_output=True)
+    test_text = (
+        "from pathlib import Path\n\n"
+        "import app\n\n\n"
+        "def test_value():\n"
+        '    leak = Path("leak.txt")\n'
+        "    if leak.exists():\n"
+        '        raise AssertionError("baseline residue")\n'
+        '    leak.write_text("created\\n")\n'
+        "    assert app.value() == 1\n"
+    )
+    patches = tmp_path / "patches"
+    patches.mkdir()
+    (patches / "solution.patch").write_text(
+        "diff --git a/app.py b/app.py\n"
+        "--- a/app.py\n"
+        "+++ b/app.py\n"
+        "@@ -1,2 +1,2 @@\n"
+        " def value():\n"
+        "-    return 0\n"
+        "+    return 1\n",
+        encoding="utf-8",
+    )
+    body = "".join(f"+{line}\n" for line in test_text.splitlines())
+    count = len(test_text.splitlines())
+    (patches / "test.patch").write_text(
+        "diff --git a/tests/test_value.py b/tests/test_value.py\n"
+        "new file mode 100644\n"
+        "--- /dev/null\n"
+        "+++ b/tests/test_value.py\n"
+        f"@@ -0,0 +1,{count} @@\n"
+        f"{body}",
+        encoding="utf-8",
+    )
+    runner = _FreshTree(source, patches, tmp_path / "runs")
+    path = f"{Path(sys.executable).parent}:/usr/bin:/bin"
+    report = run_trial_container(
+        full_name="local/leak",
+        sha="a" * 40,
+        image="taskforge/local/leak:" + ("a" * 40),
+        patches=patches,
+        checkout=source,
+        root=tmp_path,
+        executor=runner,
+        base_env={"PATH": path, "HOME": str(tmp_path), "GITHUB_TOKEN": TOKEN},
+    )
+    assert runner.leak_at_start == [False, False]
+    assert len(set(runner.trees)) == 2
+    assert (runner.trees[0] / "leak.txt").is_file()
+    assert not (source / "leak.txt").exists()
+    assert report.classification.fail_to_pass == ("tests/test_value.py::test_value",)
+    assert report.classification.pass_to_pass == ()
+    assert report.classification.still_failing == ()
+    assert TOKEN not in report.trial_stdout

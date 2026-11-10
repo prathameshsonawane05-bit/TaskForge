@@ -14,7 +14,7 @@ from forge.gates import (
     first_reason,
     run_fixture_gates,
 )
-from forge.outcomes import Classification
+from forge.outcomes import BASELINE_SCRIPT, SOLVED_SCRIPT, Classification
 from forge.sandbox import DEFAULT_TIMEOUT_SECONDS, CommandResult
 from tests.fakes import write_project
 
@@ -205,7 +205,7 @@ def test_failed_build_does_not_start_a_container(tmp_path: Path) -> None:
         assert "GITHUB_TOKEN" not in env
 
 
-def test_widget_stops_at_regression_after_one_container(tmp_path: Path) -> None:
+def test_widget_stops_after_one_baseline_and_one_solved_container(tmp_path: Path) -> None:
     write_project(tmp_path, f"GITHUB_TOKEN={TOKEN}\n", ["acme/widgets"])
     recorder = Recorder(WIDGET_LOG)
     report = run_fixture_gates(
@@ -221,7 +221,9 @@ def test_widget_stops_at_regression_after_one_container(tmp_path: Path) -> None:
     assert report.runs[0].classification.skipped == ("tests/test_new.py::test_skipped",)
     assert report.runs[0].classification.fail_to_pass == ("tests/test_new.py::test_add",)
     runs = [args for args, _env, _timeout in recorder.calls if args[:2] == ["docker", "run"]]
-    assert len(runs) == 1
+    assert len(runs) == 2
+    assert runs[0][-1] == BASELINE_SCRIPT
+    assert runs[1][-1] == SOLVED_SCRIPT
 
 
 def test_counter_runs_three_fresh_containers(tmp_path: Path) -> None:
@@ -249,9 +251,18 @@ def test_counter_runs_three_fresh_containers(tmp_path: Path) -> None:
     checkout = tmp_path / "data" / "fixtures" / "counter" / "repo"
     assert "return 0" in (checkout / "counter.py").read_text(encoding="utf-8")
     runs = [args for args, _env, _timeout in recorder.calls if args[:2] == ["docker", "run"]]
-    assert len(runs) == 3
+    assert len(runs) == 6
     names = [args[args.index("--name") + 1] for args in runs]
-    assert len(set(names)) == 3
+    assert len(set(names)) == 6
+    assert [args[-1] for args in runs] == [
+        BASELINE_SCRIPT,
+        SOLVED_SCRIPT,
+        BASELINE_SCRIPT,
+        SOLVED_SCRIPT,
+        BASELINE_SCRIPT,
+        SOLVED_SCRIPT,
+    ]
+    assert len({args[args.index(report.image)] for args in runs}) == 1
     builds = [args for args, _env, _timeout in recorder.calls if args[1] == "build"]
     assert len(builds) == 1
     assert "--platform" not in builds[0]
@@ -265,7 +276,7 @@ def test_counter_runs_three_fresh_containers(tmp_path: Path) -> None:
         assert "target=/patches" in mount
         assert str(checkout.resolve()) not in mount
     waits = [item for item in recorder.calls if item[0][:2] == ["docker", "wait"]]
-    assert len(waits) == 3
+    assert len(waits) == 6
     assert all(item[2] == DEFAULT_TIMEOUT_SECONDS for item in waits)
 
 
