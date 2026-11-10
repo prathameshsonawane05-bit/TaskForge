@@ -1170,3 +1170,88 @@ The window has 19 merged pull requests, which is under 20. That count is reporte
 
 Next stage:
 Stage 9: the held-out repository. Waiting for "next".
+
+## Stage 9: Held-out repository (before fde2db2f300e007e5cf3f49c2a31c8f6852876fa, after 25eecdf58e68650e92e00032d876959582d752e9)
+
+What was built:
+`pallets/itsdangerous` was not on the allowlist. The GitHub API reported SPDX `BSD-3-Clause` before it was added. That id is allowed, so the repository was added in commit `ce05c1a0258feff25f8c44e9a4419777254af3ef`. The limit was 40 closed pull requests, chosen before the run. The window contains 14 merged pull requests. That count is under 20, so no further page was fetched. All 14 were labeled from the title, the body, and the file list, using the rubric already in `docs/EVALUATION.md`. `forge/filters.py` was not opened while those labels were written.
+
+The labels were committed by themselves, with the funnel reason column blank, in `fde2db2f300e007e5cf3f49c2a31c8f6852876fa`. That commit is the before. The funnel ran after it. The reasons were filled in `25eecdf58e68650e92e00032d876959582d752e9`. That commit is the after. No label was changed. No filter was changed. Stage 10 was not started.
+
+I rejected all 14. The funnel accepted none: 8 `missing_source_or_test`, 3 `docs_only` (401, 391, 387), and 3 `too_many_files` (407, 405, 404). True accept 0, false accept 0, false reject 0, true reject 14. The funnel accepted none, so precision is undefined. I accepted none, so recall is undefined. For every candidate, `changed_files` matched the file-list length, and the pull's additions plus deletions matched the file-list sum. This is not an independent evaluation. I wrote the pipeline, and the rubric restates its rules. Agreement on an all-reject set is not evidence that an accept would be right.
+
+Commands run and their real output:
+
+`.venv/bin/ruff check forge tests`
+
+```
+All checks passed!
+```
+
+`.venv/bin/mypy`
+
+```
+Success: no issues found in 34 source files
+```
+
+`.venv/bin/pytest`
+
+```
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/shubhambaviskar/Desktop/TaskForge
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 144 items
+
+tests/test_allowlist.py ....                                             [  2%]
+tests/test_check.py ..............                                       [ 12%]
+tests/test_cli.py .........                                              [ 18%]
+tests/test_config.py ......                                              [ 22%]
+tests/test_filters.py ..................................                 [ 46%]
+tests/test_funnel.py ....                                                [ 49%]
+tests/test_gates.py .............                                        [ 58%]
+tests/test_git_hygiene.py ....                                           [ 61%]
+tests/test_github.py .....................                               [ 75%]
+tests/test_outcomes.py .....                                             [ 79%]
+tests/test_quality.py ............                                       [ 87%]
+tests/test_sandbox.py ..........                                         [ 94%]
+tests/test_split.py ........                                             [100%]
+
+============================= 144 passed in 1.88s ==============================
+```
+
+`.venv/bin/forge funnel pallets/itsdangerous --limit 40` (process status 0). The repo and the limit were chosen before this run, and the command ran after the before commit.
+
+```
+repo pallets/itsdangerous
+limit 40
+considered 40
+not_merged 26
+revert 0
+too_many_files 3
+too_many_lines 0
+unknown_size 0
+binary 0
+lockfile 0
+docs_only 3
+missing_source_or_test 8
+no_linked_issue 0
+accepted 0
+older_prs_cut_off yes
+```
+
+Accepted was 0. The filters were left as they were. The 26 unmerged pull requests were not candidates. Python on the host is 3.11.14 arm64. The license read and the funnel used the GitHub client. No repository code was run on the host, and the token was not printed.
+
+Bugs found and fixed:
+None.
+
+Files changed:
+`forge/allowlist.yaml`, `tests/test_allowlist.py`, `docs/EVALUATION.md`.
+
+Decisions and open questions:
+The held-out repository was the one named for this stage. The API id was `BSD-3-Clause`, so no other repository was considered. The window has 14 merged pull requests, which is under 20. That count is reported and no second page was fetched. The pre-existing uncommitted edit to `AGENTS.md` was left unstaged.
+
+Next stage:
+Stage 10: reports. Waiting for "next".
