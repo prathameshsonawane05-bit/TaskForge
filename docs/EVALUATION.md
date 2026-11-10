@@ -164,3 +164,25 @@ Accepted pull requests in window order: 3858, 3781, 3769, 3739. The earliest in 
 I accepted four. The funnel accepted those same four. True accept 4, false accept 0, false reject 0, true reject 23. Precision is 4/4. Recall is 4/4. The 73 unmerged pull requests were not candidates. The funnel counted them as `not_merged`. For every merged pull request, `changed_files` equaled the file-list length, and the pull's additions plus deletions equaled the file-list sum. No filter was changed.
 
 This is not an independent evaluation. I wrote the pipeline, and the rubric in this file restates its rules. Agreement here is not evidence that an accept would be right on a pull request I did not write the rules for.
+
+## encode/httpx
+
+Chosen now, before this funnel: `encode/httpx`, 40 closed pull requests, ordered by created time descending. The labeled windows already in this file are `psf/requests`, `pallets/itsdangerous`, and `pallets/click`. This repository had no label table. The rubric above was not changed. `forge/filters.py` was not opened while these labels were written. These labels were written before the funnel. The funnel reason column is blank.
+
+The window contains 13 merged pull requests. That count is under 20, so no further page was fetched. Every merged pull request is labeled. An unmerged pull request is not a candidate. The closed-list payload did not include `changed_files`, `additions`, or `deletions`. Each count below is the file list. I stop at the first rubric clause that fails.
+
+| Pull | Label | Rubric clause | Funnel reason |
+| --- | --- | --- | --- |
+| 3773 | reject | At least one Python source file and one Python test file. The only file is `tests/models/test_responses.py`. | |
+| 3730 | reject | At least one Python source file and one Python test file. The only file is `.github/workflows/test-suite.yml`. | |
+| 3703 | reject | Not documentation only. The only file is `docs/advanced/ssl.md`. | |
+| 3699 | reject | At least one Python source file and one Python test file. The source files are `httpx/__init__.py` and `httpx/_auth.py`, and `CHANGELOG.md` is documentation. The file list has no test file. | |
+| 3692 | reject | Not documentation only. The only file is `docs/quickstart.md`. | |
+| 3690 | reject | At least one Python source file and one Python test file. The four files are Python source under `src/`. The file list has no test file. | |
+| 3677 | reject | At least one Python source file and one Python test file. The files are `.github/workflows/publish.yml` and `.github/workflows/test-suite.yml`. | |
+| 3673 | reject | At most five files. The file list has eight files. | |
+| 3672 | reject | At most five files. The file list has eight files. | |
+| 3670 | reject | The body links an issue. The body is a short server example and does not place a closing keyword before an issue reference. | |
+| 3668 | reject | At least one Python source file and one Python test file. The only file is `.github/workflows/test-suite.yml`. | |
+| 3667 | reject | Not documentation only. The only file is `README.md`. | |
+| 3665 | reject | Not documentation only. The only file is `requirements.txt`. | |
