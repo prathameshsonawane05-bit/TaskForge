@@ -4937,3 +4937,63 @@ The parser is text. It does not install a URL by its bare name. `AGENTS.md` stay
 
 Next stage:
 No further stage was started.
+
+## Public examples (commit 089bfdd4d8957754ea78630093dcf303a383e84f)
+
+What was built:
+The README opening said the only committed task is `output/sample/local-counter`. The limitations section also listed `output/pallets-click-3781` and `output/pallets-click-3769`. Those three directories are public, and each contains `solution/solution.patch` and `tests/test.patch`.
+
+The opening and the singular committed-task section now name all three as public examples. The local counter was written to pass and has no upstream. The two Click directories are upstream-derived examples, not a blind evaluation set and not confidential grading tasks. Their committed test patches are not described as hidden from a reader of this repository. The walkthrough remains `forge gates counter` and `forge package counter`. It runs the local fixture, the fixture includes its own solution and tests, and it does not grade a hidden upstream task.
+
+A short License section says this repository has no LICENSE file and no chosen SPDX license. No LICENSE file was created, and no SPDX id was invented. An upstream example keeps the SPDX id recorded in its `task.json`. The Click examples record `BSD-3-Clause`. `docs/DESIGN.md` makes the same public-example statement. The sentence that says an agent command ran once, was not logged in, produced no edit, and did not solve `pallets/click` 3781 was not changed.
+
+`docs/EVALUATION.md`, the label rows, the historical progress entries, and the package files were not edited. No filter, gate, or time limit changed. `forge package-pull` was not run. An agent was not run.
+
+Commands run and their real output:
+
+`.venv/bin/ruff check forge tests && .venv/bin/mypy && .venv/bin/pytest` (exit 0)
+
+```
+All checks passed!
+Success: no issues found in 40 source files
+============================= test session starts ==============================
+platform darwin -- Python 3.11.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/shubhambaviskar/Desktop/TaskForge
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 208 items
+
+tests/test_allowlist.py ....                                             [  1%]
+tests/test_check.py ..............                                       [  8%]
+tests/test_ci.py .                                                       [  9%]
+tests/test_cli.py .........                                              [ 13%]
+tests/test_config.py ......                                              [ 16%]
+tests/test_filters.py .............................................      [ 37%]
+tests/test_funnel.py ..........                                          [ 42%]
+tests/test_gates.py .............                                        [ 49%]
+tests/test_git_hygiene.py .....                                          [ 51%]
+tests/test_github.py .....................                               [ 61%]
+tests/test_outcomes.py ..............                                    [ 68%]
+tests/test_package_pull.py ......                                        [ 71%]
+tests/test_publish.py ...........                                        [ 76%]
+tests/test_quality.py .....................                              [ 86%]
+tests/test_report.py ...                                                 [ 87%]
+tests/test_sandbox.py ............                                       [ 93%]
+tests/test_split.py ............                                         [ 99%]
+tests/test_wheel.py .                                                    [100%]
+
+============================= 208 passed in 3.49s ==============================
+```
+
+Bugs found and fixed:
+None. The opening named one public example while two more were already committed.
+
+Files changed:
+`README.md`, `docs/DESIGN.md`.
+
+Decisions and open questions:
+The repository still has no chosen license. `AGENTS.md` stayed unstaged.
+
+Next stage:
+No further stage was started.
